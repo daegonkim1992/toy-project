@@ -297,10 +297,10 @@ describe("조회 범위와 가능한 기능", () => {
     expect(visibleRequests(park, all).map((r) => r.id)).toEqual(["r-park"]);
   });
 
-  it("작성자만 작성 중 의뢰를 수정하고 제출하는 메뉴를 본다", () => {
-    expect(allowedActions(kim, kimDraft)).toEqual(["edit", "submit"]);
+  it("작성자만 작성 중 의뢰를 수정, 제출, 취소하는 메뉴를 본다", () => {
+    expect(allowedActions(kim, kimDraft)).toEqual(["edit", "submit", "cancel"]);
     expect(allowedActions(lee, kimSubmitted)).toEqual([]);
-    expect(allowedActions(kim, kimSubmitted)).toEqual([]);
+    expect(allowedActions(kim, kimSubmitted)).toEqual(["cancel"]);
   });
 
   it("해석관리자는 작성 중이 아닌 의뢰를 모두 본다", () => {

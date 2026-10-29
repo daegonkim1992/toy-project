@@ -112,13 +112,23 @@ export type Revision = {
   submittedAt: string;
 };
 
+export type HistoryEventType =
+  | "created"
+  | "target_locked"
+  | "submitted"
+  | "revision_requested"
+  | "resubmitted"
+  | "accepted"
+  | "cancelled";
+
 export type HistoryEvent = {
-  type: "created" | "target_locked" | "submitted";
+  type: HistoryEventType;
   from: RequestStatus | null;
   to: RequestStatus;
   actorId: string;
   at: string;
   note: string;
+  reasonCode?: string;
 };
 
 export type AirflowRequest = RequestContent & {
@@ -127,6 +137,7 @@ export type AirflowRequest = RequestContent & {
   requestDate: string;
   ownerId: string;
   ownerDepartment: string;
+  assigneeId: string;
   status: RequestStatus;
   casesConfirmed: boolean;
   revisions: Revision[];

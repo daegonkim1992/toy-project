@@ -6,9 +6,18 @@ import { findUser } from "@/features/people";
 
 import { caseSources } from "../cases";
 import { STATUS_LABEL, type AirflowRequest } from "../model";
+import { REVIEW_REASONS, changedItems } from "../review";
 import { DECISION_USES, OPERATION_MODE_OPTIONS, SCOPE_OPTIONS, findPmsProject } from "../reference-data";
 
-const HISTORY_LABEL = { created: "작성 시작", target_locked: "의뢰 대상 확정", submitted: "제출" } as const;
+const HISTORY_LABEL = {
+  created: "작성 시작",
+  target_locked: "의뢰 대상 확정",
+  submitted: "제출",
+  revision_requested: "보완 요청",
+  resubmitted: "재제출",
+  accepted: "접수·배정",
+  cancelled: "취소",
+} as const;
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -26,6 +35,7 @@ export function RequestSummary({ request }: { request: AirflowRequest }) {
   const productName = (id: string) => products.find((p) => p.id === id)?.displayName ?? "-";
   const operatingName = (id: string) => request.operating.find((o) => o.id === id)?.name ?? "-";
   const { spacePressure, heatExchanger, filter } = request.conditions;
+  const assigneeName = request.assigneeId ? findUser(request.assigneeId)?.name : "";
   const sources = caseSources(request);
   const nameIn = (list: { id: string; name: string }[] | null, id: string) => list?.find((x) => x.id === id)?.name;
 
@@ -148,6 +158,35 @@ export function RequestSummary({ request }: { request: AirflowRequest }) {
         </CardContent>
       </Card>
 
+      {request.revisions.length >= 2 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>이전 revision 대비 달라진 항목</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {(() => {
+              const [previous, current] = request.revisions.slice(-2);
+              const changes = changedItems(previous.snapshot, current.snapshot);
+              return changes.length === 0 ? (
+                <p className="text-sm text-muted-foreground">달라진 항목이 없습니다.</p>
+              ) : (
+                <ul className="list-disc pl-5 text-sm">
+                  {changes.map((change) => (
+                    <li key={change}>{change}</li>
+                  ))}
+                </ul>
+              );
+            })()}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {assigneeName ? (
+        <p className="text-sm">
+          배정된 해석담당자: <strong>{assigneeName}</strong>
+        </p>
+      ) : null}
+
       <Card>
         <CardHeader>
           <CardTitle>진행 이력</CardTitle>
@@ -158,6 +197,8 @@ export function RequestSummary({ request }: { request: AirflowRequest }) {
               <li key={i}>
                 {new Date(event.at).toLocaleString("ko-KR")} · {findUser(event.actorId)?.name ?? event.actorId} · {HISTORY_LABEL[event.type]}
                 {event.from && event.from !== event.to ? ` (${STATUS_LABEL[event.from]} → ${STATUS_LABEL[event.to]})` : ""}
+                {event.reasonCode ? ` · 사유: ${REVIEW_REASONS.find((r) => r.code === event.reasonCode)?.label ?? event.reasonCode}` : ""}
+                {event.note ? ` · ${event.note}` : ""}
               </li>
             ))}
           </ul>

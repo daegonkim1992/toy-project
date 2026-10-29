@@ -22,6 +22,7 @@ export function parseRequests(raw: string | null): AirflowRequest[] {
     const stored = raw ? (JSON.parse(raw) as (AirflowRequest & StoredContent)[]) : [];
     return stored.map((request) => ({
       ...normalizeContent(request),
+      assigneeId: request.assigneeId ?? "",
       revisions: request.revisions.map((revision) => ({ ...revision, snapshot: normalizeContent(revision.snapshot as StoredContent) })),
     })) as AirflowRequest[];
   } catch {

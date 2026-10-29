@@ -9,8 +9,10 @@ import { useCurrentUser } from "@/features/people/current-user";
 
 import type { AirflowRequest, SubmissionIssue } from "../model";
 import { allowedActions, confirmCases, editRequest, lockTarget, submitRequest, visibleRequests, type RequestPatch } from "../request";
+import { acceptRequest, cancelRequest, latestRevisionRequest, requestRevision, type ActionResult } from "../review";
 import { useRequests } from "../use-requests";
 import { RequestEditor } from "./request-editor";
+import { CancelAction, ManagerActions } from "./review-actions";
 import { RequestSummary } from "./request-summary";
 
 export function RequestPage({ id }: { id: string }) {
@@ -38,7 +40,16 @@ export function RequestPage({ id }: { id: string }) {
 
   const replace = (next: AirflowRequest) => commit((all) => all.map((r) => (r.id === next.id ? next : r)));
 
-  if (!allowedActions(user, request).includes("edit")) {
+  const actions = allowedActions(user, request);
+  // 성공하면 빈 문자열, 실패하면 화면에 보일 메시지를 돌려준다.
+  const apply = (result: ActionResult) => {
+    if (!result.ok) return result.message;
+    replace(result.request);
+    return "";
+  };
+  const cancel = () => apply(cancelRequest(request, user, new Date()));
+
+  if (!actions.includes("edit")) {
     return (
       <div className="flex flex-col gap-6">
         <div>
@@ -47,6 +58,13 @@ export function RequestPage({ id }: { id: string }) {
           </Button>
         </div>
         <RequestSummary request={request} />
+        {actions.includes("accept") ? (
+          <ManagerActions
+            onAccept={(analystId) => apply(acceptRequest(request, user, analystId, new Date()))}
+            onRequestRevision={(code, note) => apply(requestRevision(request, user, { code, note }, new Date()))}
+          />
+        ) : null}
+        {actions.includes("cancel") ? <CancelAction onCancel={cancel} /> : null}
       </div>
     );
   }
@@ -55,6 +73,8 @@ export function RequestPage({ id }: { id: string }) {
     <RequestEditor
       key={request.id}
       request={request}
+      revisionNote={request.status === "revision_needed" ? latestRevisionRequest(request) : undefined}
+      onCancel={cancel}
       onEdit={(patch: RequestPatch) => replace(editRequest(request, patch))}
       onLock={() => {
         const result = lockTarget(request, requests, new Date());

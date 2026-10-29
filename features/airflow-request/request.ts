@@ -28,6 +28,7 @@ export function createDraft(user: SessionUser, now: Date, id: string): AirflowRe
     requestDate: dateKey(now),
     ownerId: user.id,
     ownerDepartment: user.department,
+    assigneeId: "",
     status: "draft",
     casesConfirmed: false,
     target: { locked: false, division: "", lineup: "", platform: "", chassis: "", scope: "", operationMode: "" },
@@ -237,7 +238,8 @@ export function confirmCases(request: AirflowRequest): CasesResult {
 export type SubmitResult = { ok: true; request: AirflowRequest } | { ok: false; issues: SubmissionIssue[] };
 
 export function submitRequest(request: AirflowRequest, user: SessionUser, now: Date): SubmitResult {
-  if (request.ownerId !== user.id || request.status !== "draft") {
+  const submittable = request.status === "draft" || request.status === "revision_needed";
+  if (request.ownerId !== user.id || !submittable) {
     return { ok: false, issues: [{ step: "review", message: "제출할 수 없는 상태이거나 작성자가 아닙니다." }] };
   }
   const issues = validateSubmission(request);
@@ -259,7 +261,10 @@ export function submitRequest(request: AirflowRequest, user: SessionUser, now: D
       ...request,
       status: "under_review",
       revisions: [...request.revisions, { no: request.revisions.length + 1, snapshot, submittedBy: user.id, submittedAt: at }],
-      history: [...request.history, { type: "submitted", from: request.status, to: "under_review", actorId: user.id, at, note: "" }],
+      history: [
+        ...request.history,
+        { type: request.status === "draft" ? "submitted" : "resubmitted", from: request.status, to: "under_review", actorId: user.id, at, note: "" },
+      ],
     },
   };
 }
@@ -271,12 +276,17 @@ export function visibleRequests(user: SessionUser, all: AirflowRequest[]): Airfl
     );
   }
   if (user.role === "manager") return all.filter((r) => r.status !== "draft");
-  return [];
+  return all.filter((r) => r.assigneeId === user.id);
 }
 
-export type RequestAction = "edit" | "submit";
+export type RequestAction = "edit" | "submit" | "resubmit" | "cancel" | "accept" | "request_revision";
 
 export function allowedActions(user: SessionUser, request: AirflowRequest): RequestAction[] {
-  if (user.role === "requester" && request.ownerId === user.id && request.status === "draft") return ["edit", "submit"];
+  if (user.role === "requester" && request.ownerId === user.id) {
+    if (request.status === "draft") return ["edit", "submit", "cancel"];
+    if (request.status === "under_review") return ["cancel"];
+    if (request.status === "revision_needed") return ["edit", "resubmit", "cancel"];
+  }
+  if (user.role === "manager" && request.status === "under_review") return ["accept", "request_revision"];
   return [];
 }

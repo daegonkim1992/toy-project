@@ -5,9 +5,11 @@ import { useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 
-import type { AirflowRequest, StepKey, SubmissionIssue } from "../model";
+import type { AirflowRequest, HistoryEvent, StepKey, SubmissionIssue } from "../model";
+import { REVIEW_REASONS } from "../review";
 import { validateSubmission, type RequestPatch } from "../request";
 import { CasesStep } from "./cases-step";
+import { CancelAction } from "./review-actions";
 import { InfoStep } from "./info-step";
 import { OperatingStep } from "./operating-step";
 import { OptionalConditionsStep } from "./optional-conditions";
@@ -26,12 +28,16 @@ const STEPS: { key: StepKey; label: string }[] = [
 
 export function RequestEditor({
   request,
+  revisionNote,
+  onCancel,
   onEdit,
   onLock,
   onConfirmCases,
   onSubmit,
 }: {
   request: AirflowRequest;
+  revisionNote?: HistoryEvent;
+  onCancel: () => string;
   onEdit: (patch: RequestPatch) => void;
   onLock: () => string;
   onConfirmCases: () => SubmissionIssue[];
@@ -52,6 +58,17 @@ export function RequestEditor({
         </h1>
         <span className="text-sm text-muted-foreground">입력한 내용은 자동으로 저장됩니다.</span>
       </div>
+
+      {revisionNote ? (
+        <Alert>
+          <AlertDescription>
+            <p className="font-medium">
+              보완 요청: {REVIEW_REASONS.find((r) => r.code === revisionNote.reasonCode)?.label ?? "기타"}
+            </p>
+            <p className="whitespace-pre-wrap">{revisionNote.note}</p>
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       <nav aria-label="작성 단계" className="flex flex-wrap gap-2">
         {STEPS.map(({ key, label }, index) => (
@@ -135,13 +152,15 @@ export function RequestEditor({
             ) : null}
             <div>
               <Button disabled={issues.length > 0} onClick={() => setSubmitIssues(onSubmit())}>
-                제출
+                {request.status === "revision_needed" ? "재제출" : "제출"}
               </Button>
             </div>
             <RequestSummary request={request} />
           </div>
         ) : null}
       </section>
+
+      <CancelAction onCancel={onCancel} />
 
       <div className="flex justify-between">
         <Button

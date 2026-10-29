@@ -7,11 +7,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { findUser } from "@/features/people";
+import { ROLE_LABEL, findUser, type SessionUser } from "@/features/people";
 import { useCurrentUser } from "@/features/people/current-user";
 
-import { STATUS_LABEL, type AirflowRequest, type RequestStatus } from "../model";
+import { STATUS_LABEL, type AirflowRequest } from "../model";
 import { createDraft, visibleRequests } from "../request";
+import { todoRequests } from "../review";
 import { useRequests } from "../use-requests";
 
 function RequestTable({ requests, empty }: { requests: AirflowRequest[]; empty: string }) {
@@ -48,6 +49,26 @@ function RequestTable({ requests, empty }: { requests: AirflowRequest[]; empty: 
   );
 }
 
+function TodoSection({ user, requests }: { user: SessionUser; requests: AirflowRequest[] }) {
+  const todo = todoRequests(user, requests);
+  return (
+    <section className="flex flex-col gap-3" aria-label="할 일">
+      <h2 className="font-heading text-lg font-medium">할 일</h2>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {todo.statuses.map((status) => (
+          <Card key={status}>
+            <CardHeader>
+              <CardTitle>{STATUS_LABEL[status]}</CardTitle>
+            </CardHeader>
+            <CardContent className="text-3xl font-semibold">{todo.counts[status] ?? 0}건</CardContent>
+          </Card>
+        ))}
+      </div>
+      <RequestTable requests={todo.requests} empty="지금 처리할 의뢰가 없습니다." />
+    </section>
+  );
+}
+
 export function HomePage() {
   const { user } = useCurrentUser();
   const { requests, commit } = useRequests();
@@ -56,24 +77,28 @@ export function HomePage() {
   if (requests === null) return <p className="text-sm text-muted-foreground">불러오는 중입니다.</p>;
 
   const visible = visibleRequests(user, requests);
+
+  if (user.role !== "requester") {
+    return (
+      <div className="flex flex-col gap-8">
+        <h1 className="font-heading text-2xl font-semibold tracking-tight">{ROLE_LABEL[user.role]} 업무</h1>
+        <TodoSection user={user} requests={requests} />
+        <section className="flex flex-col gap-3">
+          <h2 className="font-heading text-lg font-medium">{user.role === "manager" ? "제출된 전체 의뢰" : "배정된 의뢰"}</h2>
+          <RequestTable requests={visible} empty="조회할 수 있는 의뢰가 없습니다." />
+        </section>
+      </div>
+    );
+  }
+
   const mine = visible.filter((r) => r.ownerId === user.id);
   const sameDepartment = visible.filter((r) => r.ownerId !== user.id);
-  const count = (status: RequestStatus) => mine.filter((r) => r.status === status).length;
 
   const startRequest = () => {
     const draft = createDraft(user, new Date(), crypto.randomUUID());
     commit((all) => [...all, draft]);
     router.push(`/requests/${draft.id}`);
   };
-
-  if (user.role !== "requester") {
-    return (
-      <div className="flex flex-col gap-6">
-        <h1 className="font-heading text-2xl font-semibold tracking-tight">제출된 의뢰</h1>
-        <RequestTable requests={visible} empty="조회할 수 있는 의뢰가 없습니다." />
-      </div>
-    );
-  }
 
   return (
     <div className="flex flex-col gap-8">
@@ -82,16 +107,7 @@ export function HomePage() {
         <Button onClick={startRequest}>새 의뢰 작성</Button>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        {(["draft", "under_review", "in_progress"] as RequestStatus[]).map((status) => (
-          <Card key={status}>
-            <CardHeader>
-              <CardTitle>{STATUS_LABEL[status]}</CardTitle>
-            </CardHeader>
-            <CardContent className="text-3xl font-semibold">{count(status)}건</CardContent>
-          </Card>
-        ))}
-      </div>
+      <TodoSection user={user} requests={requests} />
 
       <section className="flex flex-col gap-3">
         <h2 className="font-heading text-lg font-medium">내가 만든 의뢰</h2>

@@ -151,3 +151,88 @@ test("공간 압력과 열교환기를 고르지 않으면 제출이 막힌다",
   await expect(page.getByText("공간 압력: 값을 입력하거나 '없음'을 선택해야 합니다.")).toBeVisible();
   await expect(page.getByText("열교환기: 사양을 입력하거나 '열교환기 없음'을 선택해야 합니다.")).toBeVisible();
 });
+
+async function submitCompleteRequest(page: Page) {
+  await startLockedRequest(page);
+  await fillCompleteRequest(page);
+  await page.getByRole("button", { name: "6. 최종 검토" }).click();
+  await page.getByRole("button", { name: "제출", exact: true }).click();
+  await expect(page.getByText(/현재 revision 1/)).toBeVisible();
+}
+
+const KIM = "김민준 · 의뢰자 · 실외기설계팀";
+const MANAGER = "최해석 · 해석관리자 · 해석팀";
+const ANALYST = "정담당 · 해석담당자 · 해석팀";
+
+test("검토 중 보완 요청, 재제출, 접수·배정까지 이어진다", async ({ page }) => {
+  await submitCompleteRequest(page);
+
+  await page.goto("/");
+  await switchUser(page, MANAGER);
+  await expect(page.getByRole("region", { name: "할 일" })).toContainText("1건");
+  await page.getByRole("region", { name: "할 일" }).getByRole("link", { name: /CFD-/ }).click();
+
+  await page.getByRole("button", { name: "보완 요청" }).click();
+  await expect(page.getByText("사유 코드를 선택해야 합니다.")).toBeVisible();
+  await choose(page, "사유 코드", "정보 누락");
+  await page.getByLabel("보완이 필요한 내용").fill("희망 일정 근거가 필요합니다.");
+  await page.getByRole("button", { name: "보완 요청" }).click();
+  await expect(page.getByText("보완 필요", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "접수·배정" })).toHaveCount(0);
+
+  await page.goto("/");
+  await switchUser(page, KIM);
+  await expect(page.getByRole("region", { name: "할 일" })).toContainText("보완 필요");
+  await page.getByRole("region", { name: "할 일" }).getByRole("link", { name: /CFD-/ }).click();
+  await expect(page.getByText("희망 일정 근거가 필요합니다.").first()).toBeVisible();
+  await page.getByRole("button", { name: "2. 의뢰 내용" }).click();
+  await page.getByLabel("모델명 (Model Suffix)").fill("CHANGED-2");
+  await page.getByRole("button", { name: "6. 최종 검토" }).click();
+  await page.getByRole("button", { name: "재제출", exact: true }).click();
+  await expect(page.getByText(/현재 revision 2/)).toBeVisible();
+
+  await page.goto("/");
+  await switchUser(page, MANAGER);
+  await page.getByRole("region", { name: "할 일" }).getByRole("link", { name: /CFD-/ }).click();
+  await expect(page.getByText("의뢰 내용: 모델명")).toBeVisible();
+  await page.getByRole("button", { name: "접수·배정" }).click();
+  await expect(page.getByText("해석담당자를 지정해야 합니다.")).toBeVisible();
+  await choose(page, "해석담당자", "정담당 · 해석팀");
+  await page.getByRole("button", { name: "접수·배정" }).click();
+  await expect(page.getByText("해석 진행 중", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "접수·배정" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "보완 요청" })).toHaveCount(0);
+
+  await page.goto("/");
+  await switchUser(page, KIM);
+  await page.getByRole("link", { name: /CFD-/ }).first().click();
+  await expect(page.getByText("해석 진행 중", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "의뢰 취소" })).toHaveCount(0);
+
+  await page.goto("/");
+  await switchUser(page, ANALYST);
+  await expect(page.getByRole("region", { name: "할 일" })).toContainText("1건");
+  await page.getByRole("region", { name: "할 일" }).getByRole("link", { name: /CFD-/ }).click();
+  await expect(page.getByText("해석 진행 중", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "접수·배정" })).toHaveCount(0);
+});
+
+test("의뢰자는 접수 전에 의뢰를 취소할 수 있고 취소된 의뢰는 조회만 된다", async ({ page }) => {
+  await submitCompleteRequest(page);
+  await page.getByRole("button", { name: "의뢰 취소" }).click();
+  await page.getByRole("button", { name: "취소 확정" }).click();
+  await expect(page.getByText("취소", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "의뢰 취소" })).toHaveCount(0);
+
+  await page.goto("/");
+  await switchUser(page, MANAGER);
+  await expect(page.getByRole("region", { name: "할 일" })).toContainText("0건");
+});
+
+test("작성 중인 의뢰도 취소할 수 있다", async ({ page }) => {
+  await startLockedRequest(page);
+  await page.getByRole("button", { name: "의뢰 취소" }).click();
+  await page.getByRole("button", { name: "취소 확정" }).click();
+  await expect(page.getByText("취소", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: /^\d\. / })).toHaveCount(0);
+});
