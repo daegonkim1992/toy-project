@@ -159,8 +159,19 @@ describe("Case의 선택 조건 열", () => {
     });
   };
 
-  it("활성 조건의 열은 모두 선택해야 한다", () => {
-    const result = confirmCases(withPressureColumn());
+  it("선택지가 하나뿐인 조건은 운전 조건을 고른 Case에 자동으로 들어간다", () => {
+    const request = withPressureColumn();
+    expect(request.cases.every((row) => row.pressureId === "p1")).toBe(true);
+    expect(confirmCases(request).ok).toBe(true);
+  });
+
+  it("선택지가 둘 이상인 활성 조건의 열은 모두 선택해야 한다", () => {
+    const base = withPressureColumn();
+    const two = editRequest(base, {
+      conditions: { ...base.conditions, spacePressure: { state: "use", packages: [pressure(), pressure({ id: "p2", name: "공간 압력 2", inlet: "20" })] } },
+      cases: base.cases.map((row) => ({ ...row, pressureId: "" })),
+    });
+    const result = confirmCases(two);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.issues.map((i) => i.message)).toContain("Case 1의 공간 압력을 선택해야 합니다.");
   });
@@ -246,13 +257,25 @@ describe("Case의 선택 조건 열", () => {
     expect(extended.cases.every((row) => row.filterId === "f1")).toBe(true);
   });
 
-  it("사라진 패키지를 고른 Case의 선택은 비워진다", () => {
-    const request = withPressureColumn();
-    const selected = editRequest(request, { cases: request.cases.map((row) => ({ ...row, pressureId: "p1" })) });
-    const replaced = editRequest(selected, {
-      conditions: { ...selected.conditions, spacePressure: { state: "use", packages: [pressure({ id: "p9", name: "공간 압력 9" })] } },
+  it("사라진 패키지를 고른 Case의 선택은 비워지고, 남은 선택지가 하나뿐이면 그것으로 채워진다", () => {
+    const request = editRequest(withPressureColumn(), {
+      conditions: {
+        ...withPressureColumn().conditions,
+        spacePressure: { state: "use", packages: [pressure(), pressure({ id: "p2", name: "공간 압력 2", inlet: "20" })] },
+      },
     });
-    expect(replaced.cases.every((row) => row.pressureId === "")).toBe(true);
+    const selected = editRequest(request, { cases: request.cases.map((row) => ({ ...row, pressureId: "p1" })) });
+    const twoLeft = editRequest(selected, {
+      conditions: {
+        ...selected.conditions,
+        spacePressure: { state: "use", packages: [pressure({ id: "p8", name: "공간 압력 8" }), pressure({ id: "p9", name: "공간 압력 9", inlet: "30" })] },
+      },
+    });
+    expect(twoLeft.cases.every((row) => row.pressureId === "")).toBe(true);
+    const oneLeft = editRequest(twoLeft, {
+      conditions: { ...twoLeft.conditions, spacePressure: { state: "use", packages: [pressure({ id: "p9", name: "공간 압력 9" })] } },
+    });
+    expect(oneLeft.cases.every((row) => row.pressureId === "p9")).toBe(true);
   });
 });
 

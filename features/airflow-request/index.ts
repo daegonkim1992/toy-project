@@ -1,7 +1,16 @@
 export * from "./model";
 export * from "./reference-data";
 export { newOperatingPackage } from "./operating";
-export { caseSources, defaultCaseRow, validateCases, type CaseSources } from "./cases";
+export {
+  AUTO_COMBINATION_LIMIT,
+  allCombinations,
+  caseSources,
+  defaultCaseRow,
+  isMatrixMode,
+  toggleMatrixCell,
+  validateCases,
+  type CaseSources,
+} from "./cases";
 export { emptyConditions } from "./conditions";
 export {
   allowedActions,

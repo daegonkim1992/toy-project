@@ -3,21 +3,22 @@
 import { useState } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
 import type { AirflowRequest, HistoryEvent, StepKey, SubmissionIssue } from "../model";
+import type { RequestPatch } from "../request";
 import { REVIEW_REASONS } from "../review";
-import { validateSubmission, type RequestPatch } from "../request";
 import { CasesStep } from "./cases-step";
-import { CancelAction } from "./review-actions";
+import { ConditionsStep } from "./conditions-step";
+import { stepStatuses } from "./form-layout";
 import { InfoStep } from "./info-step";
-import { OperatingStep } from "./operating-step";
-import { OptionalConditionsStep } from "./optional-conditions";
 import { ProductsStep } from "./products-step";
-import { RequestSummary } from "./request-summary";
+import { ReviewStep } from "./review-step";
+import { CancelAction } from "./review-actions";
 import { TargetStep } from "./target-step";
 
-const STEPS: { key: StepKey; label: string }[] = [
+export const STEPS: { key: StepKey; label: string }[] = [
   { key: "target", label: "의뢰 대상" },
   { key: "info", label: "의뢰 내용" },
   { key: "products", label: "해석 제품" },
@@ -43,12 +44,20 @@ export function RequestEditor({
   onConfirmCases: () => SubmissionIssue[];
   onSubmit: () => SubmissionIssue[];
 }) {
-  const [step, setStep] = useState<StepKey>("target");
+  const [step, setStep] = useState<StepKey>(request.target.locked ? "info" : "target");
   const [lockMessage, setLockMessage] = useState("");
   const [caseIssues, setCaseIssues] = useState<SubmissionIssue[]>([]);
   const [submitIssues, setSubmitIssues] = useState<SubmissionIssue[]>([]);
   const locked = request.target.locked;
-  const issues = validateSubmission(request);
+  const statuses = stepStatuses(request);
+  const index = STEPS.findIndex((s) => s.key === step);
+  const previous = STEPS[index - 1];
+  const next = STEPS[index + 1];
+  const blocking = Object.values(statuses).some((s) => s.kind === "todo");
+  const go = (key: StepKey) => {
+    setStep(key);
+    window.scrollTo({ top: 0 });
+  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -71,21 +80,33 @@ export function RequestEditor({
       ) : null}
 
       <nav aria-label="작성 단계" className="flex flex-wrap gap-2">
-        {STEPS.map(({ key, label }, index) => (
-          <Button
-            key={key}
-            variant={step === key ? "default" : "outline"}
-            size="sm"
-            disabled={!locked && key !== "target"}
-            aria-current={step === key ? "step" : undefined}
-            onClick={() => setStep(key)}
-          >
-            {index + 1}. {label}
-          </Button>
-        ))}
+        {STEPS.map(({ key, label }, i) => {
+          const status = key === "review" ? undefined : statuses[key];
+          return (
+            <Button
+              key={key}
+              variant={step === key ? "default" : "outline"}
+              size="sm"
+              disabled={!locked && key !== "target"}
+              aria-current={step === key ? "step" : undefined}
+              onClick={() => go(key)}
+            >
+              {i + 1}. {label}
+              {status ? (
+                status.kind === "done" ? (
+                  <span aria-label="완료">✓</span>
+                ) : (
+                  <Badge variant="destructive" className={step === key ? "bg-background text-destructive" : undefined}>
+                    {status.label}
+                  </Badge>
+                )
+              ) : null}
+            </Button>
+          );
+        })}
       </nav>
 
-      <section aria-label={STEPS.find((s) => s.key === step)?.label}>
+      <section aria-label={STEPS[index].label} className="flex flex-col gap-6">
         {step === "target" ? (
           <TargetStep
             request={request}
@@ -94,7 +115,7 @@ export function RequestEditor({
             onLock={() => {
               const message = onLock();
               setLockMessage(message);
-              if (message === "") setStep("info");
+              if (message === "") go("info");
             }}
           />
         ) : null}
@@ -103,13 +124,11 @@ export function RequestEditor({
           <ProductsStep request={request} onChange={(base, comparisons) => onEdit({ base, comparisons })} />
         ) : null}
         {step === "operating" ? (
-          <div className="flex flex-col gap-10">
-            <section aria-label="운전 조건" className="flex flex-col gap-4">
-              <h2 className="font-heading text-lg font-medium">운전 조건</h2>
-              <OperatingStep request={request} onChange={(operating) => onEdit({ operating })} />
-            </section>
-            <OptionalConditionsStep conditions={request.conditions} onChange={(conditions) => onEdit({ conditions })} />
-          </div>
+          <ConditionsStep
+            request={request}
+            onOperatingChange={(operating) => onEdit({ operating })}
+            onConditionsChange={(conditions) => onEdit({ conditions })}
+          />
         ) : null}
         {step === "cases" ? (
           <CasesStep
@@ -122,61 +141,34 @@ export function RequestEditor({
             onConfirm={() => setCaseIssues(onConfirmCases())}
           />
         ) : null}
-        {step === "review" ? (
-          <div className="flex flex-col gap-6">
-            {issues.length > 0 ? (
-              <Alert variant="destructive">
-                <AlertDescription>
-                  <p className="mb-2 font-medium">제출하려면 아래 항목을 고쳐야 합니다.</p>
-                  <ul className="flex flex-col gap-1">
-                    {issues.map((issue) => (
-                      <li key={`${issue.step}-${issue.message}`} className="flex flex-wrap items-center gap-2">
-                        <span>{issue.message}</span>
-                        <Button variant="link" size="sm" className="h-auto p-0" onClick={() => setStep(issue.step)}>
-                          {STEPS.find((s) => s.key === issue.step)?.label} 단계로 이동
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
-                </AlertDescription>
-              </Alert>
-            ) : (
-              <Alert>
-                <AlertDescription>모든 제출 조건을 충족했습니다.</AlertDescription>
-              </Alert>
-            )}
-            {submitIssues.length > 0 ? (
-              <Alert variant="destructive">
-                <AlertDescription>제출하지 못했습니다: {submitIssues[0].message}</AlertDescription>
-              </Alert>
-            ) : null}
-            <div>
-              <Button disabled={issues.length > 0} onClick={() => setSubmitIssues(onSubmit())}>
-                {request.status === "revision_needed" ? "재제출" : "제출"}
-              </Button>
-            </div>
-            <RequestSummary request={request} />
-          </div>
-        ) : null}
+        {step === "review" ? <ReviewStep request={request} statuses={statuses} onEditStep={go} /> : null}
       </section>
 
-      <CancelAction onCancel={onCancel} />
-
-      <div className="flex justify-between">
-        <Button
-          variant="outline"
-          disabled={step === "target"}
-          onClick={() => setStep(STEPS[Math.max(0, STEPS.findIndex((s) => s.key === step) - 1)].key)}
-        >
-          이전
-        </Button>
-        <Button
-          variant="outline"
-          disabled={step === "review" || !locked}
-          onClick={() => setStep(STEPS[Math.min(STEPS.length - 1, STEPS.findIndex((s) => s.key === step) + 1)].key)}
-        >
-          다음
-        </Button>
+      <div className="sticky bottom-0 z-10 flex flex-col gap-3 border-t bg-background py-3">
+        {submitIssues.length > 0 ? (
+          <Alert variant="destructive">
+            <AlertDescription>제출하지 못했습니다: {submitIssues[0].message}</AlertDescription>
+          </Alert>
+        ) : null}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CancelAction onCancel={onCancel} compact />
+          <div className="flex gap-2">
+            {previous ? (
+              <Button variant="outline" onClick={() => go(previous.key)}>
+                이전
+              </Button>
+            ) : null}
+            {next ? (
+              <Button disabled={!locked} onClick={() => go(next.key)}>
+                다음: {next.label}
+              </Button>
+            ) : (
+              <Button disabled={blocking} onClick={() => setSubmitIssues(onSubmit())}>
+                {request.status === "revision_needed" ? "재제출" : "제출"}
+              </Button>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
