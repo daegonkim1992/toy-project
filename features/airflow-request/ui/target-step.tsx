@@ -2,7 +2,8 @@
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { FieldGroup } from "@/components/ui/field";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 import type { AirflowRequest, RequestTarget } from "../model";
 import {
@@ -35,31 +36,39 @@ export function TargetStep({
   if (target.locked) {
     const row = findClassification(target);
     return (
-      <div className="flex flex-col gap-4">
-        <Alert>
-          <AlertDescription>
-            의뢰 대상이 확정되어 바꿀 수 없습니다. 의뢰번호 <strong>{request.requestNo}</strong>
-          </AlertDescription>
-        </Alert>
-        <dl className="grid grid-cols-[8rem_1fr] gap-x-4 gap-y-2 text-sm">
-          <dt className="text-muted-foreground">제품 분류</dt>
-          <dd>{[target.division, target.lineup, target.platform, target.chassis].filter(Boolean).join(" › ")}</dd>
-          <dt className="text-muted-foreground">해석유형</dt>
-          <dd>풍량</dd>
-          {row?.windowScope ? (
-            <>
-              <dt className="text-muted-foreground">해석 범위</dt>
-              <dd>{SCOPE_OPTIONS.find((o) => o.value === target.scope)?.label}</dd>
-            </>
-          ) : null}
-          {row?.unified ? (
-            <>
-              <dt className="text-muted-foreground">운전 구분</dt>
-              <dd>{OPERATION_MODE_OPTIONS.find((o) => o.value === target.operationMode)?.label}</dd>
-            </>
-          ) : null}
-        </dl>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>의뢰 대상</CardTitle>
+          <CardAction>
+            <Badge variant="secondary">확정됨</Badge>
+          </CardAction>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <dl className="grid grid-cols-[8rem_1fr] gap-x-4 gap-y-2 text-sm">
+            <dt className="text-muted-foreground">제품 분류</dt>
+            <dd>{[target.division, target.lineup, target.platform, target.chassis].filter(Boolean).join(" › ")}</dd>
+            <dt className="text-muted-foreground">해석유형</dt>
+            <dd>풍량</dd>
+            {row?.windowScope ? (
+              <>
+                <dt className="text-muted-foreground">해석 범위</dt>
+                <dd>{SCOPE_OPTIONS.find((o) => o.value === target.scope)?.label}</dd>
+              </>
+            ) : null}
+            {row?.unified ? (
+              <>
+                <dt className="text-muted-foreground">운전 구분</dt>
+                <dd>{OPERATION_MODE_OPTIONS.find((o) => o.value === target.operationMode)?.label}</dd>
+              </>
+            ) : null}
+            <dt className="text-muted-foreground">의뢰번호</dt>
+            <dd>{request.requestNo}</dd>
+          </dl>
+          <p className="text-sm text-muted-foreground">
+            확정된 의뢰 대상은 바꿀 수 없습니다. 다른 제품으로 의뢰하려면 이 의뢰를 취소하고 새로 작성합니다.
+          </p>
+        </CardContent>
+      </Card>
     );
   }
 
@@ -74,7 +83,7 @@ export function TargetStep({
       <p className="text-sm text-muted-foreground">
         제품 분류를 고르고 의뢰 대상을 확정하면 의뢰번호가 발급되고 바꿀 수 없습니다. 이 의뢰서는 풍량 해석을 요청합니다.
       </p>
-      <FieldGroup>
+      <div className="grid gap-4 sm:grid-cols-2">
         <SelectInput
           label="사업부"
           value={target.division}
@@ -134,7 +143,7 @@ export function TargetStep({
             onChange={(v) => set({ operationMode: v as RequestTarget["operationMode"] })}
           />
         ) : null}
-      </FieldGroup>
+      </div>
       {lockMessage ? (
         <Alert variant="destructive">
           <AlertDescription>{lockMessage}</AlertDescription>

@@ -87,14 +87,14 @@ export function ManagerActions({
   );
 }
 
-export function CancelAction({ onCancel }: { onCancel: () => string }) {
+export function CancelAction({ onCancel, compact = false }: { onCancel: () => string; compact?: boolean }) {
   const [confirming, setConfirming] = useState(false);
   const [message, setMessage] = useState("");
 
   if (!confirming) {
     return (
       <div>
-        <Button variant="outline" onClick={() => setConfirming(true)}>
+        <Button variant={compact ? "ghost" : "outline"} size={compact ? "sm" : "default"} onClick={() => setConfirming(true)}>
           의뢰 취소
         </Button>
       </div>

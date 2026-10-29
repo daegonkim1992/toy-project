@@ -35,18 +35,27 @@ export function defaultCaseRow(productId: string): CaseRow {
 
 const keepIf = (id: string, list: { id: string }[] | null) => (list !== null && list.some((item) => item.id === id) ? id : "");
 
-/** 없어진 형상의 행은 지우고, 없어진 선택과 사용하지 않는 조건의 열은 비우고, 행이 없는 형상에는 기본 행을 더한다. */
+// 운전 조건을 고른 행에서 선택지가 하나뿐인 선택 조건은 자동으로 채운다.
+const keepOrOnly = (id: string, list: { id: string }[] | null, operatingId: string) => {
+  const kept = keepIf(id, list);
+  return kept === "" && operatingId !== "" && list !== null && list.length === 1 ? list[0].id : kept;
+};
+
+/** 없어진 형상의 행은 지우고, 없어진 선택과 사용하지 않는 조건의 열은 비우고, 하나뿐인 선택지는 채우고, 행이 없는 형상에는 기본 행을 더한다. */
 export function reconcileCases(rows: CaseRow[], sources: CaseSources): CaseRow[] {
   const productIds = new Set(sources.products.map((p) => p.id));
   const kept = rows
     .filter((row) => row.productId === "" || productIds.has(row.productId))
-    .map((row) => ({
-      ...row,
-      operatingId: keepIf(row.operatingId, sources.operating),
-      pressureId: keepIf(row.pressureId, sources.pressures),
-      heatExchangerId: keepIf(row.heatExchangerId, sources.heatExchangers),
-      filterId: keepIf(row.filterId, sources.filters),
-    }));
+    .map((row) => {
+      const operatingId = keepIf(row.operatingId, sources.operating);
+      return {
+        ...row,
+        operatingId,
+        pressureId: keepOrOnly(row.pressureId, sources.pressures, operatingId),
+        heatExchangerId: keepOrOnly(row.heatExchangerId, sources.heatExchangers, operatingId),
+        filterId: keepOrOnly(row.filterId, sources.filters, operatingId),
+      };
+    });
   const covered = new Set(kept.map((row) => row.productId));
   const added = sources.products.filter((p) => !covered.has(p.id)).map((p) => defaultCaseRow(p.id));
   return [...kept, ...added];
@@ -74,7 +83,13 @@ export function validateCases(rows: CaseRow[], sources: CaseSources): Submission
 
   if (rows.length === 0) add("Case를 1행 이상 만들어야 합니다.");
   rows.forEach((row, index) => {
-    if (!sources.products.some((p) => p.id === row.productId)) add(`Case ${index + 1}의 형상을 선택해야 합니다.`);
+    const productKnown = sources.products.some((p) => p.id === row.productId);
+    if (!productKnown) add(`Case ${index + 1}의 형상을 선택해야 합니다.`);
+    // 형상만 있고 아무것도 고르지 않은 행은 형상의 기본 행이다. 형상 이름으로 안내한다.
+    if (productKnown && columns.every((column) => !column.pick(row))) {
+      add(`${productName(row.productId)}의 조합을 하나 이상 골라야 합니다.`);
+      return;
+    }
     for (const column of columns) {
       if (!column.list.some((item) => item.id === column.pick(row))) {
         add(`Case ${index + 1}의 ${column.label}${column.josa} 선택해야 합니다.`);
@@ -105,4 +120,60 @@ export function validateCases(rows: CaseRow[], sources: CaseSources): Submission
     }
   }
   return issues;
+}
+
+const optionalLists = (sources: CaseSources) => [sources.pressures, sources.heatExchangers, sources.filters];
+
+/** 운전 조건 외의 활성 조건이 모두 선택지 하나 이하이면 형상 × 운전 조건 격자로 고를 수 있다. */
+export function isMatrixMode(sources: CaseSources): boolean {
+  return optionalLists(sources).every((list) => list === null || list.length <= 1);
+}
+
+const onlyChoice = (list: { id: string }[] | null) => (list && list.length === 1 ? list[0].id : "");
+
+/** 격자 칸을 누른 결과. 이미 있는 조합이면 빼고, 없으면 하나뿐인 선택지를 채워 더한다. */
+export function toggleMatrixCell(rows: CaseRow[], productId: string, operatingId: string, sources: CaseSources): CaseRow[] {
+  if (rows.some((row) => row.productId === productId && row.operatingId === operatingId)) {
+    return rows.filter((row) => !(row.productId === productId && row.operatingId === operatingId));
+  }
+  const filled = {
+    operatingId,
+    pressureId: onlyChoice(sources.pressures),
+    heatExchangerId: onlyChoice(sources.heatExchangers),
+    filterId: onlyChoice(sources.filters),
+  };
+  const blank = rows.findIndex(
+    (row) => row.productId === productId && !row.operatingId && !row.pressureId && !row.heatExchangerId && !row.filterId,
+  );
+  if (blank >= 0) return rows.map((row, index) => (index === blank ? { ...row, ...filled } : row));
+  return [...rows, { id: `cell-${productId}-${operatingId}`, productId, ...filled }];
+}
+
+// 업무정의서 6장: 자동 조합은 200개까지.
+export const AUTO_COMBINATION_LIMIT = 200;
+
+/** 형상, 운전 조건, 활성 선택 조건의 모든 조합. 상한을 넘으면 앞에서부터 200개만 만든다. */
+export function allCombinations(sources: CaseSources): CaseRow[] {
+  const ids = (list: { id: string }[] | null) => (list === null || list.length === 0 ? [""] : list.map((item) => item.id));
+  const rows: CaseRow[] = [];
+  for (const product of sources.products) {
+    for (const operating of sources.operating) {
+      for (const pressureId of ids(sources.pressures)) {
+        for (const heatExchangerId of ids(sources.heatExchangers)) {
+          for (const filterId of ids(sources.filters)) {
+            if (rows.length >= AUTO_COMBINATION_LIMIT) return rows;
+            rows.push({
+              id: `combo-${product.id}-${operating.id}-${pressureId}-${heatExchangerId}-${filterId}`,
+              productId: product.id,
+              operatingId: operating.id,
+              pressureId,
+              heatExchangerId,
+              filterId,
+            });
+          }
+        }
+      }
+    }
+  }
+  return rows;
 }
