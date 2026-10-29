@@ -1,0 +1,918 @@
+<!--
+  prototype shell: the review chrome every prototype starts from.
+
+  Keep this comment in the prototype you grow from here: it is the contract,
+  and later turns work from that file rather than from this one.
+
+  Contract (extend product screens; keep the review shell):
+  - Product:  .sh-stage contains only end-user product UI. Keep review notes,
+               rationale, instructions, and approval controls in conversation.
+  - Screens:  <section data-screen="slug" data-title="Label"> inside .sh-stage.
+               The selector, arrow keys, and #hash routing build themselves.
+               Use one option per product destination or distinct surface,
+               named by its product role. Keep baselines, variants, comparison
+               labels, steps, indexes, and progress out of names and states.
+               Links may use href="#slug".
+  - States:   "Default" is automatic. A screen declares only representative
+               presets in data-states="Empty,Error". Use natural, screen-specific
+               names. Reserve presets for important multi-step results, forced
+               data or errors, or materially different structure; keep one-click
+               and transient states as interactions. Use data-when="Empty" on
+               preset-only elements. Call prototypeShell.setState("Name") on
+               entry and setState("Default") on exit, including when repeated
+               actions cross a preset condition.
+  - Viewport: "vp (m)" cycles full / 390 / 768. The 390 preset is a
+               fixed-height, internally scrolling phone frame. Start a
+               mobile-first prototype by adding class="sh-vp-390" to <body>
+               (or a bootstrap classList.add before the chrome script runs).
+  - Pinning:  keep in-frame bars (tab bars, CTAs) inside the phone with
+               position: sticky; position: fixed pins to the browser window.
+  - Tokens:   replace the project-tokens block with project tokens copied
+               verbatim. Map differing names to --background, --foreground, and
+               --font afterwards; replace network fonts with a system stack and
+               note that substitution. Without a design system, keep this
+               palette as the finished style. When the project ships dark
+               tokens, copy them under .sh-theme-dark, which the shell sets
+               on both the root element and body, so :root.sh-theme-dark and
+               body.sh-theme-dark work too. A .dark class or a
+               prefers-color-scheme media query copied verbatim would follow
+               the reviewer's system instead of the toggle.
+  - Theme:    the light / dark switch (t) changes the product surface only.
+               It appears only when a .sh-theme-dark rule declares dark tokens,
+               so a prototype without them carries no theme control. Prototypes
+               always load light; the review bar keeps its own dark styling in
+               both themes so it still reads as chrome.
+  - Placeholders: .wf-pic stands in for pictures the prototype has no real
+               files for. Use real text everywhere text belongs.
+
+  - Chrome:   Keep exactly the screen selector, selected-screen state selector,
+               viewport cycle, and theme toggle.
+
+  Self-contained by design: no build, no framework, no network.
+-->
+<meta charset="utf-8">
+<title>Prototype · 풍량 해석 의뢰서</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  /* ── project tokens: app/globals.css :root, copied verbatim ── */
+  :root {
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.145 0 0);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.145 0 0);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.145 0 0);
+    --primary: oklch(0.205 0 0);
+    --primary-foreground: oklch(0.985 0 0);
+    --secondary: oklch(0.97 0 0);
+    --secondary-foreground: oklch(0.205 0 0);
+    --muted: oklch(0.97 0 0);
+    --muted-foreground: oklch(0.556 0 0);
+    --accent: oklch(0.97 0 0);
+    --accent-foreground: oklch(0.205 0 0);
+    --destructive: oklch(0.577 0.245 27.325);
+    --border: oklch(0.922 0 0);
+    --input: oklch(0.922 0 0);
+    --ring: oklch(0.708 0 0);
+    --radius: 0.625rem;
+    /* Inter(네트워크 폰트) 대신 시스템 글꼴을 쓴다. */
+    --font: "Inter", system-ui, -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
+  }
+  /* app/globals.css .dark, copied verbatim under the shell's dark class */
+  .sh-theme-dark {
+    --background: oklch(0.145 0 0);
+    --foreground: oklch(0.985 0 0);
+    --card: oklch(0.205 0 0);
+    --card-foreground: oklch(0.985 0 0);
+    --popover: oklch(0.205 0 0);
+    --popover-foreground: oklch(0.985 0 0);
+    --primary: oklch(0.922 0 0);
+    --primary-foreground: oklch(0.205 0 0);
+    --secondary: oklch(0.269 0 0);
+    --secondary-foreground: oklch(0.985 0 0);
+    --muted: oklch(0.269 0 0);
+    --muted-foreground: oklch(0.708 0 0);
+    --accent: oklch(0.269 0 0);
+    --accent-foreground: oklch(0.985 0 0);
+    --destructive: oklch(0.704 0.191 22.216);
+    --border: oklch(1 0 0 / 10%);
+    --input: oklch(1 0 0 / 15%);
+    --ring: oklch(0.556 0 0);
+  }
+
+  /* ── review chrome (sh-*): keep; extend product styles elsewhere ── */
+  * { box-sizing: border-box }
+  body {
+    margin: 0; padding: 0 0 40px;
+    background: var(--background, #f6f6f6); color: var(--foreground, #3a3a3a);
+    font-family: var(--font, system-ui, sans-serif);
+  }
+  .sh-bar {
+    position: sticky; top: 0; z-index: 999;
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    padding: 8px 12px; background: #191a1c; color: #d7d7d7;
+    font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .sh-bar b, .sh-control-label { color: #8a8f98; font-weight: 500 }
+  .sh-control { display: inline-flex; gap: 5px; align-items: center }
+  .sh-bar button {
+    border: 1px solid #3a3d42; background: none; color: inherit;
+    font: inherit; padding: 2px 9px; border-radius: 99px; cursor: pointer;
+  }
+  .sh-bar select {
+    width: 170px; border: 1px solid #3a3d42; background: #232428; color: inherit;
+    font: inherit; padding: 3px 28px 3px 9px; border-radius: 7px; cursor: pointer;
+    color-scheme: dark;
+  }
+  #sh-screen { width: 190px }
+  .sh-bar button.on { background: #d7d7d7; color: #191a1c; border-color: #d7d7d7 }
+  .sh-theme { display: inline-flex; border: 1px solid #3a3d42; border-radius: 99px; overflow: hidden }
+  .sh-theme button { border: 0; border-radius: 0; padding: 2px 10px }
+  .sh-spacer { flex: 1 }
+  .sh-stage { max-width: 960px; margin: 0 auto; padding: 12px 16px 0 }
+  [hidden] { display: none !important }
+
+  /* viewport presets */
+  .sh-vp-390 .sh-stage {
+    max-width: 390px; background: var(--background, #f6f6f6);
+    border: 10px solid #191a1c; border-radius: 28px;
+    padding: 16px 12px; height: min(844px, calc(100dvh - 52px));
+    overflow-y: auto; margin-top: 12px;
+  }
+  .sh-vp-768 .sh-stage {
+    max-width: 768px; border: 1px solid #c4c4c4; border-radius: 12px;
+    padding: 16px; margin-top: 12px;
+  }
+
+  /* placeholders */
+  .wf-pic  { border-radius: 4px; background:
+             repeating-linear-gradient(45deg, #e9e9e9, #e9e9e9 6px, #f2f2f2 6px, #f2f2f2 12px) }
+  .sh-theme-dark .wf-pic { background: repeating-linear-gradient(45deg,
+             color-mix(in srgb, var(--foreground) 16%, transparent) 0 6px,
+             color-mix(in srgb, var(--foreground) 8%, transparent) 6px 12px) }
+
+  /* ── product styles (shadcn base-vega 구성을 흉내 낸다) ── */
+  .app { font-size: 14px; line-height: 1.5; color: var(--foreground) }
+  .app-header { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: center;
+                border-bottom: 1px solid var(--border); padding: 0 0 12px; margin-bottom: 24px }
+  .brand { font-weight: 600; font-size: 18px; letter-spacing: -0.01em }
+  .user { display: flex; gap: 8px; align-items: center; color: var(--muted-foreground); font-size: 13px }
+  .page { display: flex; flex-direction: column; gap: 24px }
+  .title-row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: baseline }
+  h1 { font-size: 24px; font-weight: 600; letter-spacing: -0.02em; margin: 0 }
+  h2 { font-size: 18px; font-weight: 500; margin: 0 }
+  h3 { font-size: 15px; font-weight: 600; margin: 0 }
+  .muted { color: var(--muted-foreground); font-size: 13px; margin: 0 }
+  .stack { display: flex; flex-direction: column; gap: 16px }
+  .stack-sm { display: flex; flex-direction: column; gap: 8px }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center }
+  .between { justify-content: space-between }
+
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 36px; padding: 0 14px; border-radius: calc(var(--radius) * 0.8);
+         border: 1px solid transparent; background: var(--primary); color: var(--primary-foreground); font: inherit; font-weight: 500;
+         cursor: pointer; white-space: nowrap; text-decoration: none }
+  .btn-outline { background: var(--background); color: var(--foreground); border-color: var(--border); box-shadow: 0 1px 2px rgb(0 0 0 / 4%) }
+  .btn-ghost { background: none; color: var(--foreground) }
+  .btn-link { background: none; color: var(--foreground); padding: 0; height: auto; text-decoration: underline; text-underline-offset: 3px; font-weight: 500 }
+  .btn-sm { height: 32px; padding: 0 10px; font-size: 13px }
+  .btn:disabled, .btn[aria-disabled="true"] { opacity: .5; cursor: not-allowed; pointer-events: none }
+
+  .field { display: flex; flex-direction: column; gap: 6px; min-width: 0 }
+  .field > label, .field .label { font-weight: 500; font-size: 14px; display: inline-flex; gap: 6px; align-items: center }
+  .desc { color: var(--muted-foreground); font-size: 13px; margin: 0 }
+  .input, .select, .textarea { width: 100%; border: 1px solid var(--input); border-radius: calc(var(--radius) * 0.8);
+                    background: transparent; color: inherit; font: inherit; padding: 0 10px; box-shadow: 0 1px 2px rgb(0 0 0 / 4%) }
+  .input, .select { height: 36px }
+  .textarea { padding: 8px 10px; min-height: 84px; resize: vertical }
+  .select { appearance: none; padding-right: 28px;
+            background-image: linear-gradient(45deg, transparent 50%, var(--muted-foreground) 50%), linear-gradient(135deg, var(--muted-foreground) 50%, transparent 50%);
+            background-position: calc(100% - 14px) 15px, calc(100% - 10px) 15px; background-size: 4px 4px; background-repeat: no-repeat }
+  .input:focus, .select:focus, .textarea:focus { outline: 3px solid color-mix(in srgb, var(--ring) 50%, transparent); border-color: var(--ring) }
+  [aria-invalid="true"] { border-color: var(--destructive) !important }
+  .select:disabled { opacity: .5 }
+  input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--primary); margin: 0 }
+
+  .grid-2 { display: grid; gap: 16px; grid-template-columns: repeat(2, minmax(0, 1fr)) }
+  .card { border: 1px solid var(--border); border-radius: calc(var(--radius) * 1.4); background: var(--card); color: var(--card-foreground);
+          padding: 20px; display: flex; flex-direction: column; gap: 16px }
+  .alert { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; font-size: 13px }
+  .alert-ok { border-color: var(--border) }
+  .alert-bad { border-color: color-mix(in srgb, var(--destructive) 45%, transparent); color: var(--destructive) }
+  .badge { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 99px; font-size: 12px; font-weight: 500;
+           background: var(--secondary); color: var(--secondary-foreground); white-space: nowrap }
+  .badge-bad { background: color-mix(in srgb, var(--destructive) 12%, transparent); color: var(--destructive) }
+
+  /* help: 긴 안내는 도움말 아이콘 뒤로 */
+  .help { width: 18px; height: 18px; border-radius: 99px; border: 1px solid var(--border); background: var(--background); color: var(--muted-foreground);
+          font: 600 11px/1 var(--font); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0 }
+  .help[aria-expanded="true"] { background: var(--primary); color: var(--primary-foreground); border-color: var(--primary) }
+  .help-text { font-size: 13px; color: var(--muted-foreground); background: var(--muted); border-radius: var(--radius); padding: 8px 10px; margin: 0 }
+
+  /* step nav with completion state */
+  .steps { display: flex; flex-wrap: wrap; gap: 8px }
+  .step { height: 32px; padding: 0 10px; font-size: 13px }
+  .step[aria-current="step"] { background: var(--primary); color: var(--primary-foreground); border-color: var(--primary) }
+  .chip { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 99px; font-size: 12px; font-weight: 500 }
+  .chip-done { padding: 0 0 0 2px }
+  .chip-todo { background: color-mix(in srgb, var(--destructive) 12%, transparent); color: var(--destructive) }
+  .step[aria-current="step"] .chip-todo { background: color-mix(in srgb, var(--destructive) 30%, white); color: oklch(0.35 0.15 27) }
+
+  /* tables */
+  .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius) }
+  table { width: 100%; border-collapse: collapse; font-size: 13px }
+  th { text-align: left; font-weight: 500; color: var(--muted-foreground); padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap;
+       background: color-mix(in srgb, var(--muted) 60%, transparent) }
+  td { padding: 6px 10px; border-bottom: 1px solid var(--border); vertical-align: middle }
+  tr:last-child td { border-bottom: 0 }
+  td .input, td .select { height: 32px; min-width: 76px }
+  td.name { font-weight: 500; white-space: nowrap }
+  td.center, th.center { text-align: center }
+  tr.sub td { background: color-mix(in srgb, var(--muted) 50%, transparent) }
+  .fan-grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)) }
+  .fan { display: grid; grid-template-columns: auto 1fr 96px; gap: 8px; align-items: center }
+
+  /* condition title row with use/none */
+  .cond-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px }
+  .cond-head h2 { min-width: 96px }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: calc(var(--radius) * 0.8); overflow: hidden }
+  .seg button { border: 0; background: var(--background); color: var(--foreground); font: inherit; font-size: 13px; padding: 5px 14px; cursor: pointer }
+  .seg button + button { border-left: 1px solid var(--border) }
+  .seg button[aria-pressed="true"] { background: var(--primary); color: var(--primary-foreground) }
+  .seg-missing { outline: 2px solid color-mix(in srgb, var(--destructive) 50%, transparent); outline-offset: 1px }
+  .state-text { color: var(--muted-foreground); font-size: 13px }
+  .state-need { color: var(--destructive); font-weight: 500 }
+
+  /* requester summary line */
+  .summary-line { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between;
+                  border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px }
+  .summary-line strong { font-weight: 600 }
+  .disclosure { display: inline-flex; gap: 6px; align-items: center; background: none; border: 0; padding: 0; font: inherit; font-weight: 500; cursor: pointer; color: var(--foreground) }
+
+  /* product table difference text */
+  .diff-input { min-width: 260px }
+
+  /* case matrix */
+  .matrix td, .matrix th { text-align: center }
+  .matrix td:first-child, .matrix th:first-child { text-align: left }
+  .matrix input[type=checkbox] { width: 18px; height: 18px }
+
+  /* review cards */
+  .review-grid { display: grid; gap: 16px; grid-template-columns: repeat(2, minmax(0, 1fr)) }
+  .review-card { border: 1px solid var(--border); border-radius: calc(var(--radius) * 1.4); padding: 16px; display: flex; flex-direction: column; gap: 10px }
+  .review-card.bad { border-color: color-mix(in srgb, var(--destructive) 45%, transparent) }
+  .review-card dl { display: grid; grid-template-columns: 7rem 1fr; gap: 4px 12px; margin: 0; font-size: 13px }
+  .review-card dt { color: var(--muted-foreground) }
+  .review-card dd { margin: 0; overflow-wrap: anywhere }
+  .issues { margin: 0; padding-left: 18px; color: var(--destructive); font-size: 13px }
+
+  /* sticky bottom bar */
+  .bottom-bar { position: sticky; bottom: 0; z-index: 5; display: flex; justify-content: space-between; align-items: center; gap: 8px;
+                background: var(--background); border-top: 1px solid var(--border); padding: 12px 0; margin-top: 8px }
+  .bottom-bar .right { display: flex; gap: 8px }
+
+  /* 좁은 화면 */
+  .sh-vp-390 .grid-2, .sh-vp-390 .review-grid { grid-template-columns: 1fr }
+  .sh-vp-390 .review-card dl { grid-template-columns: 1fr }
+  .sh-vp-390 h1 { font-size: 20px }
+  @media (max-width: 560px) {
+    .grid-2, .review-grid { grid-template-columns: 1fr }
+    .review-card dl { grid-template-columns: 1fr }
+    h1 { font-size: 20px }
+  }
+</style>
+
+<header class="sh-bar">
+  <b>proto</b>
+  <label class="sh-control"><span class="sh-control-label">screen</span><select id="sh-screen"></select></label>
+  <span class="sh-spacer"></span>
+  <label class="sh-control"><span class="sh-control-label">state</span><select id="sh-state"></select></label>
+  <button id="sh-vp">vp: full (m)</button>
+  <div class="sh-theme" id="sh-theme" role="group" aria-label="theme (t)" hidden>
+    <button data-theme="light">light</button><button data-theme="dark">dark</button>
+  </div>
+</header>
+
+<main class="sh-stage">
+  <section data-screen="target" data-title="의뢰 대상" data-states="확정 전"></section>
+  <section data-screen="info" data-title="의뢰 내용"></section>
+  <section data-screen="products" data-title="해석 제품" data-states="비교 제품 6개"></section>
+  <section data-screen="conditions" data-title="해석조건" data-states="선택 전"></section>
+  <section data-screen="cases" data-title="Case" data-states="선택지 여러 개"></section>
+  <section data-screen="review" data-title="최종 검토" data-states="모두 충족"></section>
+</main>
+
+<script>
+  /* ───────────── product: 예시 의뢰서 데이터와 화면 ───────────── */
+  const STEPS = [
+    ['target', '의뢰 대상'], ['info', '의뢰 내용'], ['products', '해석 제품'],
+    ['conditions', '해석조건'], ['cases', 'Case'], ['review', '최종 검토'],
+  ];
+  const CATALOG = [
+    ['Fin&Tube', '7', 'Slit', '2', '14'], ['Fin&Tube', '7', 'Slit', '2', '16'], ['Fin&Tube', '7', 'Louver', '3', '14'],
+    ['Fin&Tube', '9.52', 'Slit', '2', '12'], ['Fin&Tube', '9.52', 'Slit', '3', '14'], ['Fin&Tube', '9.52', 'Louver', '4', '16'],
+    ['Micro-Channel', 'W16', 'Flat', '1', '18'], ['Micro-Channel', 'W16', 'Flat', '1', '20'], ['Micro-Channel', 'W22', 'Flat', '1', '18'],
+  ];
+  const HX_FIELDS = [['type', '유형'], ['tube', '관 직경 / 채널 폭'], ['fin', 'Fin type'], ['rows', '열 수'], ['fpi', 'FPI']];
+  const PMS = [['pms-sac-1', 'Multi V 신규 실외기 개발', 'SAC-2601', 'KR'], ['pms-sac-2', 'Multi V i 저소음 개선', 'SAC-2611', 'EU']];
+  const MORE_COMPARISONS = [
+    ['ODU-FAN-0500-C', '날개 수 5매 → 7매'],
+    ['ODU-SHR-0500-D', '쉬라우드 높이 +10mm, 벨마우스 R15'],
+    ['ODU-GRL-0500-E', '토출 그릴 개구율 68% → 75%'],
+    ['ODU-FAN-0500-F', '팬 위치 15mm 상향 (모터 브래킷 변경 포함)'],
+    ['ODU-CAB-0500-G', '측면 흡입구 루버 각도 30° → 20°, 흡입 면적 8% 증가'],
+  ];
+
+  function defaultModel() {
+    return {
+      locked: true,
+      target: { division: 'SAC', lineup: 'Multi V', platform: 'Cassette', chassis: '4Way' },
+      requesterOpen: false, moreOpen: false,
+      info: {
+        requesterDivision: 'SAC', department: '실외기설계팀', requesterName: '김민준', rank: '선임연구원',
+        requestType: '개발 프로젝트', pms: 'pms-sac-1', grade: 'A', npi: 'DV', modelSuffix: 'MUN-W160A2.AKOR',
+        desiredDate: '2026-12-04',
+        background: '실외기 팬 직경을 Ø500에서 Ø520으로 키우는 설계 변경안이 나와, 같은 회전수에서 풍량이 얼마나 늘어나는지 확인이 필요합니다.',
+        wantedResult: 'Base 대비 변경안의 풍량 변화율과 운전 대안별 풍량', decisionUse: '',
+      },
+      baseDrawing: 'ODU-FAN-0500-A',
+      comparisons: [{ drawing: 'ODU-FAN-0520-B', diff: '팬 직경 Ø500 → Ø520 (허브·날개 형상 동일)' }],
+      op: [
+        { count: '2', mode: 'common', rpm: '850', fans: [{ loc: '', rpm: '' }, { loc: '', rpm: '' }], air: '', purpose: '' },
+        { count: '2', mode: 'individual', rpm: '', fans: [{ loc: '상단 좌측 (토출구 쪽)', rpm: '900' }, { loc: '상단 우측', rpm: '870' }], air: '118.5', purpose: 'reflect' },
+      ],
+      press: { state: 'none', items: [{ inlet: '', outlet: '' }] },
+      hx: { state: 'use', items: [{ type: 'Fin&Tube', tube: '7', fin: 'Slit', rows: '2', fpi: '' }] },
+      filter: { state: 'none', items: [{ physical: '필터 A', points: [{ v: '', p: '' }] }] },
+      matrix: ['0|0', '1|0', '1|1'],
+      rows: [],
+      casesConfirmed: false,
+      submitted: false,
+    };
+  }
+  let model = defaultModel();
+
+  const esc = v => String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const products = () => [{ name: '형상 1', kind: 'Base', drawing: model.baseDrawing, diff: '' },
+    ...model.comparisons.map((c, i) => ({ name: `형상 ${i + 2}`, kind: '비교', drawing: c.drawing, diff: c.diff }))];
+  const opName = i => `운전 ${i + 1}`;
+  const hxName = i => `열교환기 ${i + 1}`;
+  const empty = v => String(v ?? '').trim() === '';
+  const hxOptions = (field, item) => {
+    const idx = HX_FIELDS.findIndex(([f]) => f === field);
+    const matches = CATALOG.filter(row => HX_FIELDS.slice(0, idx).every(([f], k) => !item[f] || row[k] === item[f]));
+    return [...new Set(matches.map(row => row[idx]))];
+  };
+  const matrixMode = () => !(model.hx.state === 'use' && model.hx.items.length > 1);
+
+  /* 단계별로 빠진 항목. 단계 버튼의 숫자와 최종 검토가 같은 목록을 쓴다. */
+  function issues() {
+    const out = { target: [], info: [], products: [], conditions: [], cases: [], review: [] };
+    if (!model.locked) out.target.push('의뢰 대상을 확정해야 합니다');
+    const req = [['requesterDivision', '의뢰자 사업부'], ['department', '부서'], ['requesterName', '요청자'], ['rank', '직급'],
+      ['requestType', '의뢰 유형'], ['modelSuffix', '모델명'], ['desiredDate', '희망 완료일'],
+      ['background', '요청 배경'], ['wantedResult', '확인하고 싶은 내용']];
+    if (model.info.requestType === '개발 프로젝트') req.push(['pms', '프로젝트(PMS)'], ['grade', '개발 등급'], ['npi', 'NPI 단계']);
+    req.forEach(([k, label]) => { if (empty(model.info[k])) out.info.push(`${label} 입력 필요`); });
+    products().forEach(p => {
+      if (empty(p.drawing)) out.products.push(`${p.name} 도면번호 입력 필요`);
+      if (p.kind === '비교' && empty(p.diff)) out.products.push(`${p.name} Base 대비 차이 입력 필요`);
+    });
+    model.op.forEach((o, i) => {
+      if (empty(o.count)) out.conditions.push(`${opName(i)}: 팬 개수 입력 필요`);
+      if (o.mode === 'common' && empty(o.rpm) && empty(o.air)) out.conditions.push(`${opName(i)}: 회전수 또는 풍량 입력 필요`);
+      if (o.mode === 'individual') o.fans.slice(0, Number(o.count) || 0).forEach((f, k) => {
+        if (empty(f.loc)) out.conditions.push(`${opName(i)}: 팬 ${k + 1} 위치 입력 필요`);
+        if (empty(f.rpm)) out.conditions.push(`${opName(i)}: 팬 ${k + 1} 회전수 입력 필요`);
+      });
+      if (!empty(o.air) && !o.purpose) out.conditions.push(`${opName(i)}: 풍량 활용 선택 필요`);
+    });
+    if (!model.press.state) out.conditions.push('공간 압력: 있음·없음 선택 필요');
+    if (model.press.state === 'use') model.press.items.forEach((p, i) => {
+      if (empty(p.inlet)) out.conditions.push(`공간 압력 ${i + 1}: 입구 압력 입력 필요`);
+      if (empty(p.outlet)) out.conditions.push(`공간 압력 ${i + 1}: 출구 압력 입력 필요`);
+    });
+    if (!model.hx.state) out.conditions.push('열교환기: 있음·없음 선택 필요');
+    if (model.hx.state === 'use') model.hx.items.forEach((h, i) => HX_FIELDS.forEach(([f, label]) => {
+      if (empty(h[f])) out.conditions.push(`${hxName(i)}: ${label} 선택 필요`);
+    }));
+    if (model.filter.state === 'use') model.filter.items.forEach(f => f.points.forEach((pt, k) => {
+      if (empty(pt.v)) out.conditions.push(`${f.physical} 측정점 ${k + 1}: 유속 입력 필요`);
+      if (empty(pt.p)) out.conditions.push(`${f.physical} 측정점 ${k + 1}: 압력손실 입력 필요`);
+    }));
+    const ps = products();
+    const used = matrixMode()
+      ? model.matrix.map(k => k.split('|').map(Number))
+      : model.rows.map(r => [r.p, r.o, r.h]);
+    if (used.length === 0) out.cases.push('Case를 1개 이상 골라야 합니다');
+    ps.forEach((p, i) => { if (!used.some(u => u[0] === i)) out.cases.push(`${p.name}이(가) 어떤 Case에도 없습니다`); });
+    model.op.forEach((o, i) => { if (!used.some(u => u[1] === i)) out.cases.push(`${opName(i)}이(가) 어떤 Case에도 없습니다`); });
+    if (!matrixMode()) model.hx.items.forEach((h, i) => { if (!used.some(u => u[2] === i)) out.cases.push(`${hxName(i)}이(가) 어떤 Case에도 없습니다`); });
+    if (out.cases.length === 0 && !model.casesConfirmed) out.cases.push('Case 구성을 확인해야 합니다');
+    return out;
+  }
+
+  function chip(slug, all) {
+    if (slug === 'review') return '';
+    const list = all[slug];
+    if (list.length === 0) return '<span class="chip chip-done" aria-label="완료">✓</span>';
+    if (slug === 'cases' && list.length === 1 && list[0].startsWith('Case 구성을 확인')) return '<span class="chip chip-todo">확인 필요</span>';
+    if (slug === 'target') return '<span class="chip chip-todo">확정 필요</span>';
+    return `<span class="chip chip-todo">${list.length}개 남음</span>`;
+  }
+
+  function frame(slug, body) {
+    const all = issues();
+    const index = STEPS.findIndex(([s]) => s === slug);
+    const prev = STEPS[index - 1], next = STEPS[index + 1];
+    const nav = STEPS.map(([s, label], i) => {
+      const locked = !model.locked && s !== 'target';
+      return `<a class="btn btn-outline step" href="#${s}" ${s === slug ? 'aria-current="step"' : ''} ${locked ? 'aria-disabled="true"' : ''}>${i + 1}. ${label} <span data-chip="${s}">${chip(s, all)}</span></a>`;
+    }).join('');
+    return `<div class="app">
+      <div class="app-header" data-component="new:AppShell">
+        <span class="brand">해석의뢰</span>
+        <span class="user">사용자 <select class="select" style="width:260px" aria-label="사용자 전환" data-component="Select"><option>김민준 · 의뢰자 · 실외기설계팀</option></select></span>
+      </div>
+      <div class="page">
+        <div class="title-row">
+          <h1>풍량 해석 의뢰서${model.locked ? ' · CFD-20261029-001' : ''}</h1>
+          <span class="muted">입력한 내용은 자동으로 저장됩니다.</span>
+        </div>
+        <nav class="steps" aria-label="작성 단계" data-component="new:StepNav">${nav}</nav>
+        ${body}
+        <div class="bottom-bar" data-component="new:BottomBar">
+          <button class="btn btn-ghost btn-sm" type="button">의뢰 취소</button>
+          <div class="right">
+            ${prev ? `<a class="btn btn-outline" href="#${prev[0]}">이전</a>` : ''}
+            ${next ? `<a class="btn" href="#${next[0]}" ${!model.locked ? 'aria-disabled="true"' : ''}>다음: ${next[1]}</a>`
+              : `<button class="btn" type="button" data-action="submit" ${['target', 'info', 'products', 'conditions', 'cases'].some(s => all[s].length) || model.submitted ? 'disabled' : ''}>제출</button>`}
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  const help = (id, text) => `<button class="help" type="button" aria-expanded="false" aria-controls="${id}" aria-label="도움말">?</button>`;
+  const helpText = (id, text) => `<p class="help-text" id="${id}" hidden>${text}</p>`;
+  const opt = (value, label, current) => `<option value="${esc(value)}" ${String(value) === String(current) ? 'selected' : ''}>${esc(label)}</option>`;
+  const inv = v => empty(v) ? 'aria-invalid="true"' : '';
+
+  /* ── 의뢰 대상 ── */
+  function renderTarget() {
+    if (model.locked) {
+      const t = model.target;
+      return `<div class="card" data-component="Card">
+        <div class="row between"><h3>의뢰 대상</h3><span class="badge">확정됨</span></div>
+        <dl style="display:grid;grid-template-columns:7rem 1fr;gap:6px 12px;margin:0">
+          <dt class="muted">제품 분류</dt><dd style="margin:0">${[t.division, t.lineup, t.platform, t.chassis].filter(Boolean).join(' › ')}</dd>
+          <dt class="muted">해석유형</dt><dd style="margin:0">풍량</dd>
+          <dt class="muted">의뢰번호</dt><dd style="margin:0">CFD-20261029-001</dd>
+        </dl>
+        <p class="muted">확정된 의뢰 대상은 바꿀 수 없습니다. 다른 제품으로 의뢰하려면 이 의뢰를 취소하고 새로 작성합니다.</p>
+      </div>`;
+    }
+    const t = model.target;
+    return `<div class="card" data-component="Card">
+      <div class="row between"><h3>의뢰 대상</h3><span class="muted">이 의뢰서는 풍량 해석을 요청합니다.</span></div>
+      <div class="grid-2">
+        <div class="field"><label for="t-div">사업부</label><select id="t-div" class="select" data-bind="target.division">${opt('', '선택', t.division)}${['SAC', 'RAC', 'Air Care', 'Chiller', 'AIDC'].map(v => opt(v, v, t.division)).join('')}</select></div>
+        <div class="field"><label for="t-line">Product Line-up</label><select id="t-line" class="select" data-bind="target.lineup" ${t.division ? '' : 'disabled'}>${opt('', '선택', t.lineup)}${(t.division === 'SAC' ? ['Multi V', 'Single CAC'] : t.division ? ['샘플 라인업'] : []).map(v => opt(v, v, t.lineup)).join('')}</select></div>
+        <div class="field"><label for="t-plat">Platform</label><select id="t-plat" class="select" data-bind="target.platform" ${t.lineup ? '' : 'disabled'}>${opt('', '선택', t.platform)}${(t.lineup === 'Multi V' ? ['Cassette', 'Duct'] : t.lineup ? ['Duct'] : []).map(v => opt(v, v, t.platform)).join('')}</select></div>
+        <div class="field"><label for="t-ch">Chassis</label><select id="t-ch" class="select" data-bind="target.chassis" ${t.platform ? '' : 'disabled'}>${opt('', '선택', t.chassis)}${(t.platform === 'Cassette' ? ['4Way'] : t.platform ? ['NA'] : []).map(v => opt(v, v, t.chassis)).join('')}</select></div>
+      </div>
+      <p class="muted">확정하면 의뢰번호가 발급되고 바꿀 수 없습니다.</p>
+      <div><button class="btn" type="button" data-action="lock" ${t.division && t.lineup && t.platform && t.chassis ? '' : 'disabled'}>의뢰 대상 확정</button></div>
+    </div>`;
+  }
+
+  /* ── 의뢰 내용 ── */
+  function renderInfo() {
+    const f = model.info;
+    const pms = PMS.find(p => p[0] === f.pms);
+    const requester = model.requesterOpen
+      ? `<div class="card" data-component="Card"><div class="row between"><h3>의뢰자 정보</h3><button class="btn btn-link btn-sm" type="button" data-action="requester-close">접기</button></div>
+          <div class="grid-2">
+            <div class="field"><label for="i-div">사업부(의뢰자 소속)</label><select id="i-div" class="select" data-bind="info.requesterDivision">${['SAC', 'RAC', 'Aircare', 'Chiller', '연구소'].map(v => opt(v, v, f.requesterDivision)).join('')}</select></div>
+            <div class="field"><label for="i-dept">부서</label><input id="i-dept" class="input" value="${esc(f.department)}" data-bind="info.department" ${inv(f.department)}></div>
+            <div class="field"><label for="i-name">요청자</label><input id="i-name" class="input" value="${esc(f.requesterName)}" data-bind="info.requesterName" ${inv(f.requesterName)}></div>
+            <div class="field"><label for="i-rank">직급</label><select id="i-rank" class="select" data-bind="info.rank">${['책임연구원', '선임연구원', '연구원'].map(v => opt(v, v, f.rank)).join('')}</select></div>
+          </div></div>`
+      : `<div class="summary-line" data-component="new:RequesterSummary"><span><span class="muted">의뢰자</span>&nbsp; <strong>${esc(f.requesterName)}</strong> · ${esc(f.rank)} · ${esc(f.requesterDivision)} ${esc(f.department)}</span>
+          <button class="btn btn-link btn-sm" type="button" data-action="requester-open">수정</button></div>`;
+    const dev = f.requestType === '개발 프로젝트';
+    return `<div class="stack">
+      ${requester}
+      <div class="card" data-component="Card">
+        <h3>의뢰 개요</h3>
+        <div class="grid-2">
+          <div class="field"><label for="i-type">의뢰 유형</label><select id="i-type" class="select" data-bind="info.requestType" data-rerender>${['개발 프로젝트', '품질 개선', '필드 이슈', '선행 검토', '기타'].map(v => opt(v, v, f.requestType)).join('')}</select></div>
+          <div class="field"><label for="i-model">모델명 (Model Suffix)</label><input id="i-model" class="input" value="${esc(f.modelSuffix)}" data-bind="info.modelSuffix" ${inv(f.modelSuffix)}></div>
+          ${dev ? `<div class="field"><label for="i-pms">프로젝트(PMS)</label><select id="i-pms" class="select" data-bind="info.pms" data-rerender ${inv(f.pms)}>${opt('', '선택', f.pms)}${PMS.map(p => opt(p[0], p[1], f.pms)).join('')}</select>
+              <p class="desc">${pms ? `Project Code ${pms[2]} · Region ${pms[3]}` : '제품 사업부(SAC) 프로젝트에서 고릅니다.'}</p></div>
+            <div class="grid-2" style="gap:12px">
+              <div class="field"><label for="i-grade">개발 등급</label><select id="i-grade" class="select" data-bind="info.grade" ${inv(f.grade)}>${opt('', '선택', f.grade)}${['A', 'B', 'Ca', 'Cb', 'D', 'JDM', 'ODM'].map(v => opt(v, v, f.grade)).join('')}</select></div>
+              <div class="field"><label for="i-npi">NPI 단계</label><select id="i-npi" class="select" data-bind="info.npi" ${inv(f.npi)}>${opt('', '선택', f.npi)}${['CP', 'DV', 'PV', 'MQ', 'MP', 'Pre MP', '미정'].map(v => opt(v, v, f.npi)).join('')}</select></div>
+            </div>` : ''}
+          <div class="field"><label for="i-date">희망 완료일</label><input id="i-date" class="input" type="date" value="${esc(f.desiredDate)}" data-bind="info.desiredDate" ${inv(f.desiredDate)}>
+            <p class="desc">의뢰 요청일(2026-10-29)보다 앞설 수 없습니다.</p></div>
+        </div>
+        <div class="grid-2">
+          <div class="field"><label for="i-bg">해석을 요청하게 된 배경</label><textarea id="i-bg" class="textarea" data-bind="info.background" ${inv(f.background)}>${esc(f.background)}</textarea></div>
+          <div class="field"><label for="i-want">해석으로 확인하고 싶은 내용</label><textarea id="i-want" class="textarea" data-bind="info.wantedResult" ${inv(f.wantedResult)}>${esc(f.wantedResult)}</textarea></div>
+        </div>
+        <div>
+          <button class="disclosure" type="button" data-action="more" aria-expanded="${model.moreOpen}">${model.moreOpen ? '▾' : '▸'} 선택 항목 (결과 활용 목적)</button>
+        </div>
+        ${model.moreOpen ? `<div class="grid-2"><div class="field"><label for="i-use">결과 활용 목적</label><select id="i-use" class="select" data-bind="info.decisionUse">${opt('', '선택 안 함', f.decisionUse)}${['문제 분석', '설계 검토', '성능 검증', '기타', '미정'].map(v => opt(v, v, f.decisionUse)).join('')}</select></div></div>` : ''}
+      </div>
+    </div>`;
+  }
+
+  /* ── 해석 제품 ── */
+  function renderProducts() {
+    const rows = products().map((p, i) => p.kind === 'Base'
+      ? `<tr><td class="name">${p.name}</td><td><span class="badge">Base</span></td>
+          <td><input class="input" value="${esc(p.drawing)}" aria-label="${p.name} 도면번호" data-bind="baseDrawing" ${inv(p.drawing)}></td>
+          <td class="muted">기준 형상</td><td></td></tr>`
+      : `<tr><td class="name">${p.name}</td><td><span class="badge">비교</span></td>
+          <td><input class="input" value="${esc(p.drawing)}" aria-label="${p.name} 도면번호" data-bind="comparisons.${i - 1}.drawing" ${inv(p.drawing)}></td>
+          <td><input class="input diff-input" value="${esc(p.diff)}" title="${esc(p.diff)}" aria-label="${p.name} Base 대비 차이" data-bind="comparisons.${i - 1}.diff" ${inv(p.diff)}></td>
+          <td><button class="btn btn-ghost btn-sm" type="button" aria-label="${p.name} 삭제" data-action="remove-product" data-index="${i - 1}">🗑</button></td></tr>`).join('');
+    return `<section class="stack" aria-label="해석 제품">
+      <div class="row between"><div class="row"><h2>해석 제품</h2>${help('h-products')}</div><span class="muted">${products().length}개 형상 · Base 1개, 비교 ${model.comparisons.length}개</span></div>
+      ${helpText('h-products', '해석에 쓸 총조립 형상을 등록합니다. 부품의 각도, 위치, 배치가 다르면 다른 총조립 형상이므로 도면번호도 달라야 합니다. 단품 도면은 쓸 수 없습니다. 도면번호는 영문, 숫자, 하이픈만 씁니다.')}
+      <div class="table-wrap" data-component="Table"><table>
+        <thead><tr><th>형상</th><th>구분</th><th>도면번호</th><th>Base 대비 차이</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+      <div><button class="btn btn-outline btn-sm" type="button" data-action="add-product">＋ 비교 제품 추가</button></div>
+    </section>`;
+  }
+
+  /* ── 해석조건 ── */
+  function condHead(key, name, state) {
+    const label = !state ? '<span class="state-text state-need">선택 필요</span>'
+      : state === 'none' ? `<span class="state-text">없음${key !== 'filter' ? ' · 입력값은 보존됩니다' : ''}</span>` : '';
+    return `<div class="cond-head" data-component="new:ConditionHeader"><h2>${name}</h2>
+      <span class="seg ${state ? '' : 'seg-missing'}" role="group" aria-label="${name} 사용 여부">
+        <button type="button" aria-pressed="${state === 'use'}" data-action="seg" data-key="${key}" data-value="use">있음</button><button type="button" aria-pressed="${state === 'none'}" data-action="seg" data-key="${key}" data-value="none">없음</button>
+      </span>${label}</div>`;
+  }
+  function renderConditions() {
+    const opRows = model.op.map((o, i) => {
+      const fans = Number(o.count) || 0;
+      const main = `<tr><td class="name">${opName(i)}</td>
+        <td><input class="input" type="number" min="1" max="10" value="${esc(o.count)}" aria-label="${opName(i)} 팬 개수" style="width:72px" data-bind="op.${i}.count" data-rerender ${inv(o.count)}></td>
+        <td><select class="select" aria-label="${opName(i)} 회전수 설정" data-bind="op.${i}.mode" data-rerender>${opt('common', '모든 팬 동일', o.mode)}${opt('individual', '팬별 설정', o.mode)}</select></td>
+        <td>${o.mode === 'common' ? `<input class="input" type="number" value="${esc(o.rpm)}" aria-label="${opName(i)} 회전수" data-bind="op.${i}.rpm" ${empty(o.rpm) && empty(o.air) ? 'aria-invalid="true"' : ''}>` : `<span class="muted">팬별 ${fans}개 · 아래 행</span>`}</td>
+        <td><input class="input" type="number" value="${esc(o.air)}" aria-label="${opName(i)} 풍량" data-bind="op.${i}.air" data-rerender-blur></td>
+        <td><select class="select" aria-label="${opName(i)} 풍량 활용" data-bind="op.${i}.purpose" ${empty(o.air) ? 'disabled' : ''} ${!empty(o.air) && !o.purpose ? 'aria-invalid="true"' : ''}>${opt('', '—', o.purpose)}${opt('reflect', '해석에 반영', o.purpose)}${opt('reference', '참고 정보', o.purpose)}</select></td>
+        <td><button class="btn btn-ghost btn-sm" type="button" aria-label="${opName(i)} 삭제" data-action="remove-op" data-index="${i}">🗑</button></td></tr>`;
+      const sub = o.mode === 'individual' ? `<tr class="sub"><td></td><td colspan="6"><div class="fan-grid">${Array.from({ length: fans }, (_, k) => {
+        const f = o.fans[k] || { loc: '', rpm: '' };
+        return `<div class="fan"><span>팬 ${k + 1}</span><input class="input" placeholder="위치" value="${esc(f.loc)}" aria-label="${opName(i)} 팬 ${k + 1} 위치" data-bind="op.${i}.fans.${k}.loc" ${inv(f.loc)}><input class="input" type="number" placeholder="rpm" value="${esc(f.rpm)}" aria-label="${opName(i)} 팬 ${k + 1} 회전수" data-bind="op.${i}.fans.${k}.rpm" ${inv(f.rpm)}></div>`;
+      }).join('')}</div></td></tr>` : '';
+      return main + sub;
+    }).join('');
+
+    const press = model.press.state === 'use' ? `<div class="stack-sm"><p class="muted">정압·계기압, Pa</p>
+      <div class="table-wrap"><table><thead><tr><th>이름</th><th>입구 압력 (Pa)</th><th>출구 압력 (Pa)</th><th></th></tr></thead><tbody>
+      ${model.press.items.map((p, i) => `<tr><td class="name">공간 압력 ${i + 1}</td>
+        <td><input class="input" type="number" value="${esc(p.inlet)}" aria-label="공간 압력 ${i + 1} 입구 압력" data-bind="press.items.${i}.inlet" ${inv(p.inlet)}></td>
+        <td><input class="input" type="number" value="${esc(p.outlet)}" aria-label="공간 압력 ${i + 1} 출구 압력" data-bind="press.items.${i}.outlet" ${inv(p.outlet)}></td>
+        <td><button class="btn btn-ghost btn-sm" type="button" aria-label="공간 압력 ${i + 1} 삭제">🗑</button></td></tr>`).join('')}
+      </tbody></table></div><div><button class="btn btn-outline btn-sm" type="button" data-action="add-press">＋ 공간 압력 추가</button></div></div>` : '';
+
+    const hx = model.hx.state === 'use' ? `<div class="stack-sm"><p class="muted">등록된 Catalog에 있는 조합만 고를 수 있습니다.</p>
+      <div class="table-wrap"><table><thead><tr><th>이름</th>${HX_FIELDS.map(([, l]) => `<th>${l}</th>`).join('')}<th></th></tr></thead><tbody>
+      ${model.hx.items.map((h, i) => `<tr><td class="name">${hxName(i)}</td>${HX_FIELDS.map(([field, label], k) => {
+        const options = hxOptions(field, h);
+        const enabled = k === 0 || !empty(h[HX_FIELDS[k - 1][0]]);
+        return `<td><select class="select" aria-label="${hxName(i)} ${label}" data-bind="hx.items.${i}.${field}" data-hx-field="${k}" data-rerender ${enabled ? '' : 'disabled'} ${inv(h[field])}>${opt('', '선택', h[field])}${options.map(v => opt(v, v, h[field])).join('')}</select></td>`;
+      }).join('')}<td><button class="btn btn-ghost btn-sm" type="button" aria-label="${hxName(i)} 삭제" data-action="remove-hx" data-index="${i}">🗑</button></td></tr>`).join('')}
+      </tbody></table></div><div><button class="btn btn-outline btn-sm" type="button" data-action="add-hx">＋ 열교환기 추가</button></div></div>` : '';
+
+    const filter = model.filter.state === 'use' ? `<div class="stack-sm"><p class="muted">물리적 필터나 측정점을 추가해도 Case는 늘지 않습니다.</p>
+      <div class="table-wrap"><table><thead><tr><th>필터 조건</th><th>물리적 필터</th><th>측정점</th><th>유속 (m/s)</th><th>압력손실 (Pa)</th><th></th></tr></thead><tbody>
+      ${model.filter.items.map((f, i) => f.points.map((pt, k) => `<tr>${k === 0 ? `<td class="name" rowspan="${f.points.length}">필터 ${i + 1}</td><td rowspan="${f.points.length}"><input class="input" value="${esc(f.physical)}" aria-label="필터 ${i + 1} 물리적 필터 이름" data-bind="filter.items.${i}.physical"></td>` : ''}
+        <td class="center">${k + 1}</td>
+        <td><input class="input" type="number" value="${esc(pt.v)}" aria-label="${esc(f.physical)} 측정점 ${k + 1} 유속" data-bind="filter.items.${i}.points.${k}.v" ${inv(pt.v)}></td>
+        <td><input class="input" type="number" value="${esc(pt.p)}" aria-label="${esc(f.physical)} 측정점 ${k + 1} 압력손실" data-bind="filter.items.${i}.points.${k}.p" ${inv(pt.p)}></td>
+        <td><button class="btn btn-ghost btn-sm" type="button" aria-label="측정점 ${k + 1} 삭제">🗑</button></td></tr>`).join('')).join('')}
+      </tbody></table></div>
+      <div class="row"><button class="btn btn-outline btn-sm" type="button" data-action="add-point">＋ 측정점 추가</button><button class="btn btn-outline btn-sm" type="button">＋ 물리적 필터 추가</button><button class="btn btn-outline btn-sm" type="button">＋ 필터 조건 추가</button></div></div>` : '';
+
+    return `<section class="stack" aria-label="운전 조건">
+        <div class="row between"><div class="row"><h2>운전 조건</h2>${help('h-op')}</div><span class="muted">운전 대안마다 한 줄 · 회전수나 풍량 중 하나는 필수</span></div>
+        ${helpText('h-op', '서로 비교할 운전 대안은 운전 조건을 따로 추가하고, 한 운전 조건 안에서 동시에 도는 여러 팬은 팬 개수로 입력합니다. 회전수 숫자가 같다는 이유만으로 “모든 팬 동일”로 보지 않습니다. 풍량을 입력하면 해석에 반영할지 참고 정보로만 줄지 고릅니다.')}
+        <div class="table-wrap" data-component="Table"><table>
+          <thead><tr><th>이름</th><th>팬 개수</th><th>회전수 설정</th><th>회전수 (rpm)</th><th>풍량 (m³/min)</th><th>풍량 활용</th><th></th></tr></thead>
+          <tbody>${opRows}</tbody>
+        </table></div>
+        <div><button class="btn btn-outline btn-sm" type="button" data-action="add-op">＋ 운전 조건 추가</button></div>
+      </section>
+      <section class="stack-sm" aria-label="공간 압력">${condHead('press', '공간 압력', model.press.state)}${press}</section>
+      <section class="stack-sm" aria-label="열교환기">${condHead('hx', '열교환기', model.hx.state)}${hx}</section>
+      <section class="stack-sm" aria-label="필터">${condHead('filter', '필터', model.filter.state)}${filter}</section>`;
+  }
+
+  /* ── Case ── */
+  function renderCases() {
+    const ps = products();
+    const all = issues().cases.filter(m => !m.startsWith('Case 구성을 확인'));
+    const confirmed = model.casesConfirmed && all.length === 0;
+    let body;
+    if (matrixMode()) {
+      const fixed = model.hx.state === 'use' ? `<p class="muted">열교환기는 ${hxName(0)} 하나뿐이라 모든 Case에 자동으로 들어갑니다.</p>` : '';
+      body = `${fixed}<div class="table-wrap" data-component="new:CaseMatrix"><table class="matrix">
+        <thead><tr><th>형상 ↓ &nbsp;운전 조건 →</th>${model.op.map((o, i) => `<th>${opName(i)}</th>`).join('')}</tr></thead>
+        <tbody>${ps.map((p, pi) => `<tr><td class="name">${p.name} <span class="muted">${p.kind === 'Base' ? 'Base' : esc(p.diff).slice(0, 18) + (p.diff.length > 18 ? '…' : '')}</span></td>${model.op.map((o, oi) => `<td><input type="checkbox" aria-label="${p.name} + ${opName(oi)}" data-action="cell" data-key="${pi}|${oi}" ${model.matrix.includes(`${pi}|${oi}`) ? 'checked' : ''}></td>`).join('')}</tr>`).join('')}</tbody>
+      </table></div>
+      <div class="row"><button class="btn btn-outline btn-sm" type="button" data-action="all-cells">전부 선택 (${ps.length * model.op.length}개)</button><button class="btn btn-outline btn-sm" type="button" data-action="clear-cells">모두 해제</button><span class="muted">선택한 Case ${model.matrix.length}개</span></div>`;
+    } else {
+      body = `<p class="muted">열교환기가 ${model.hx.items.length}개라 조합을 표로 고릅니다.</p>
+      <div class="table-wrap" data-component="Table"><table>
+        <thead><tr><th>Case</th><th>형상</th><th>운전 조건</th><th>열교환기</th><th></th></tr></thead>
+        <tbody>${model.rows.map((r, i) => `<tr><td class="name">${i + 1}</td>
+          <td><select class="select" aria-label="Case ${i + 1} 형상" data-bind="rows.${i}.p" data-number data-rerender>${ps.map((p, k) => opt(k, p.name, r.p)).join('')}</select></td>
+          <td><select class="select" aria-label="Case ${i + 1} 운전 조건" data-bind="rows.${i}.o" data-number data-rerender>${model.op.map((o, k) => opt(k, opName(k), r.o)).join('')}</select></td>
+          <td><select class="select" aria-label="Case ${i + 1} 열교환기" data-bind="rows.${i}.h" data-number data-rerender>${model.hx.items.map((h, k) => opt(k, hxName(k), r.h)).join('')}</select></td>
+          <td><button class="btn btn-ghost btn-sm" type="button" aria-label="Case ${i + 1} 삭제" data-action="remove-row" data-index="${i}">🗑</button></td></tr>`).join('')}</tbody>
+      </table></div>
+      <div class="row"><button class="btn btn-outline btn-sm" type="button" data-action="add-row">＋ Case 추가</button><button class="btn btn-outline btn-sm" type="button" data-action="all-rows">전부 조합 (${ps.length * model.op.length * model.hx.items.length}개)</button><span class="muted">Case ${model.rows.length}개</span></div>`;
+    }
+    return `<section class="stack" aria-label="Case">
+      <div class="row between"><div class="row"><h2>Case</h2>${help('h-case')}</div><span class="muted">해석할 형상과 조건의 조합</span></div>
+      ${helpText('h-case', '모든 조건을 자동으로 곱하지 않고, 필요한 조합만 고릅니다. 입력한 형상과 조건은 최소 한 Case에서 쓰여야 합니다. 형상이나 조건을 바꾸면 Case 구성을 다시 확인해야 제출할 수 있습니다.')}
+      ${body}
+      ${all.length ? `<div class="alert alert-bad"><ul class="issues">${all.map(m => `<li>${esc(m)}</li>`).join('')}</ul></div>` : ''}
+      <div class="row"><button class="btn" type="button" data-action="confirm-cases" ${all.length ? 'disabled' : ''}>Case 구성 확인</button>
+        ${confirmed ? '<span class="badge">확인됨</span>' : '<span class="muted">제품이나 조건을 바꾸면 다시 확인해야 합니다.</span>'}</div>
+    </section>`;
+  }
+
+  /* ── 최종 검토 ── */
+  function renderReview() {
+    const all = issues();
+    const total = ['target', 'info', 'products', 'conditions', 'cases'].reduce((n, s) => n + all[s].length, 0);
+    const t = model.target, f = model.info, ps = products();
+    const opText = model.op.map((o, i) => `${opName(i)}: 팬 ${o.count}개, ${o.mode === 'common' ? `${o.rpm || '-'} rpm` : o.fans.slice(0, Number(o.count) || 0).map(x => `${x.rpm || '-'}`).join('/') + ' rpm'}${o.air ? `, 풍량 ${o.air}` : ''}`).join(' · ');
+    const used = matrixMode() ? model.matrix.length : model.rows.length;
+    const card = (slug, title, dl) => `<div class="review-card ${all[slug].length ? 'bad' : ''}" data-component="Card">
+      <div class="row between"><h3>${title}</h3><div class="row">${all[slug].length ? `<span class="badge badge-bad">${all[slug].length}개 남음</span>` : '<span class="badge">완료</span>'}<a class="btn btn-link btn-sm" href="#${slug}">수정</a></div></div>
+      ${all[slug].length ? `<ul class="issues">${all[slug].map(m => `<li>${esc(m)}</li>`).join('')}</ul>` : ''}
+      <dl>${dl.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v || '-')}</dd>`).join('')}</dl></div>`;
+    return `<section class="stack" aria-label="최종 검토">
+      ${model.submitted ? '<div class="alert alert-ok">제출했습니다. 해석관리자의 검토를 기다립니다.</div>'
+        : total ? `<div class="alert alert-bad">제출하려면 ${total}개 항목을 더 채워야 합니다. 각 카드의 수정을 눌러 해당 단계로 이동합니다.</div>`
+        : '<div class="alert alert-ok">모든 제출 조건을 충족했습니다.</div>'}
+      <div class="review-grid">
+        ${card('target', '의뢰 대상', [['제품 분류', [t.division, t.lineup, t.platform, t.chassis].filter(Boolean).join(' › ')], ['해석유형', '풍량']])}
+        ${card('info', '의뢰 내용', [['의뢰자', `${f.requesterName} · ${f.rank}`], ['의뢰 유형', f.requestType], ['모델명', f.modelSuffix], ['희망 완료일', f.desiredDate]])}
+        ${card('products', '해석 제품', [['형상', `${ps.length}개 (Base 1, 비교 ${ps.length - 1})`], ['Base', model.baseDrawing], ...model.comparisons.slice(0, 3).map((c, i) => [`형상 ${i + 2}`, c.diff])])}
+        ${card('conditions', '해석조건', [['운전 조건', opText], ['공간 압력', model.press.state === 'use' ? `${model.press.items.length}개` : model.press.state ? '없음' : '선택 전'], ['열교환기', model.hx.state === 'use' ? model.hx.items.map((h, i) => `${hxName(i)} ${h.type} ${h.tube} ${h.fin} ${h.rows}열 FPI ${h.fpi || '?'}`).join(', ') : model.hx.state ? '없음' : '선택 전'], ['필터', model.filter.state === 'use' ? `${model.filter.items.length}개` : '없음']])}
+        ${card('cases', 'Case', [['Case 수', `${used}개`], ['확인', model.casesConfirmed ? '확인됨' : '확인 전']])}
+      </div>
+    </section>`;
+  }
+
+  const RENDER = { target: renderTarget, info: renderInfo, products: renderProducts, conditions: renderConditions, cases: renderCases, review: renderReview };
+  let shown = 'target';
+  function render(slug = shown) {
+    const section = document.querySelector(`[data-screen="${slug}"]`);
+    section.innerHTML = frame(slug, RENDER[slug]());
+  }
+  function refreshChips() {
+    const all = issues();
+    document.querySelectorAll(`[data-screen="${shown}"] [data-chip]`).forEach(el => { el.innerHTML = chip(el.dataset.chip, all); });
+  }
+
+  /* 경로 문자열("op.1.fans.0.rpm")로 모델을 읽고 쓴다. */
+  function setPath(path, value) {
+    const keys = path.split('.');
+    let target = model;
+    keys.slice(0, -1).forEach((k, i) => {
+      if (target[k] === undefined) target[k] = /^\d+$/.test(keys[i + 1]) ? [] : {};
+      target = target[k];
+    });
+    target[keys.at(-1)] = value;
+  }
+  const casesAffected = path => /^(baseDrawing|comparisons|op\.\d+\.(count|mode)|hx|press\.state|rows)/.test(path);
+
+  const stageEl = document.querySelector('.sh-stage');
+  stageEl.addEventListener('input', e => {
+    const el = e.target.closest('[data-bind]');
+    if (!el || el.tagName === 'SELECT') return;
+    setPath(el.dataset.bind, el.value);
+    if (casesAffected(el.dataset.bind)) model.casesConfirmed = false;
+    if (el.hasAttribute('aria-invalid') || empty(el.value)) el.setAttribute('aria-invalid', String(empty(el.value)));
+    if (el.dataset.bind.endsWith('.diff')) el.title = el.value;
+    refreshChips();
+  });
+  stageEl.addEventListener('change', e => {
+    const el = e.target.closest('[data-bind]');
+    if (el) {
+      let value = el.value;
+      if (el.hasAttribute('data-number')) value = Number(value);
+      setPath(el.dataset.bind, value);
+      if (el.dataset.hxField !== undefined) {
+        const [, , i] = el.dataset.bind.split('.');
+        HX_FIELDS.slice(Number(el.dataset.hxField) + 1).forEach(([f]) => { model.hx.items[i][f] = ''; });
+        const next = HX_FIELDS[Number(el.dataset.hxField) + 1];
+        if (next && hxOptions(next[0], model.hx.items[i]).length === 1) model.hx.items[i][next[0]] = hxOptions(next[0], model.hx.items[i])[0];
+      }
+      if (el.dataset.bind.endsWith('.air') && empty(value)) setPath(el.dataset.bind.replace('.air', '.purpose'), '');
+      if (el.dataset.bind === 'info.requestType' && value !== '개발 프로젝트') Object.assign(model.info, { pms: '', grade: '', npi: '' });
+      if (el.dataset.bind.startsWith('target.')) {
+        const order = ['division', 'lineup', 'platform', 'chassis'];
+        order.slice(order.indexOf(el.dataset.bind.split('.')[1]) + 1).forEach(k => { model.target[k] = ''; });
+      }
+      if (casesAffected(el.dataset.bind)) model.casesConfirmed = false;
+      if (el.tagName === 'SELECT' || el.hasAttribute('data-rerender') || el.hasAttribute('data-rerender-blur')) render();
+      else refreshChips();
+    }
+    if (e.target.dataset.action === 'cell') {
+      const key = e.target.dataset.key;
+      model.matrix = e.target.checked ? [...model.matrix, key] : model.matrix.filter(k => k !== key);
+      model.casesConfirmed = false;
+      render();
+    }
+  });
+  stageEl.addEventListener('click', e => {
+    const helpBtn = e.target.closest('.help');
+    if (helpBtn) {
+      const open = helpBtn.getAttribute('aria-expanded') !== 'true';
+      helpBtn.setAttribute('aria-expanded', String(open));
+      document.getElementById(helpBtn.getAttribute('aria-controls')).hidden = !open;
+      return;
+    }
+    const el = e.target.closest('[data-action]');
+    if (!el || el.dataset.action === 'cell') return;
+    const i = Number(el.dataset.index);
+    switch (el.dataset.action) {
+      case 'lock': model.locked = true; leavePreset(); break;
+      case 'requester-open': model.requesterOpen = true; break;
+      case 'requester-close': model.requesterOpen = false; break;
+      case 'more': model.moreOpen = !model.moreOpen; break;
+      case 'add-product': model.comparisons.push({ drawing: '', diff: '' }); model.casesConfirmed = false; break;
+      case 'remove-product': model.comparisons.splice(i, 1); pruneCases(); break;
+      case 'add-op': model.op.push({ count: '1', mode: 'common', rpm: '', fans: [], air: '', purpose: '' }); model.casesConfirmed = false; break;
+      case 'remove-op': model.op.splice(i, 1); pruneCases(); break;
+      case 'seg': model[el.dataset.key].state = el.dataset.value; model.casesConfirmed = false;
+        if (['press', 'hx'].every(k => model[k].state)) leavePreset(); break;
+      case 'add-press': model.press.items.push({ inlet: '', outlet: '' }); break;
+      case 'add-hx': model.hx.items.push({ type: '', tube: '', fin: '', rows: '', fpi: '' }); syncRows(); model.casesConfirmed = false; break;
+      case 'remove-hx': model.hx.items.splice(i, 1); pruneCases(); break;
+      case 'add-point': model.filter.items[0].points.push({ v: '', p: '' }); break;
+      case 'all-cells': model.matrix = products().flatMap((p, pi) => model.op.map((o, oi) => `${pi}|${oi}`)); model.casesConfirmed = false; break;
+      case 'clear-cells': model.matrix = []; model.casesConfirmed = false; break;
+      case 'add-row': model.rows.push({ p: 0, o: 0, h: 0 }); model.casesConfirmed = false; break;
+      case 'remove-row': model.rows.splice(i, 1); model.casesConfirmed = false; break;
+      case 'all-rows': model.rows = products().flatMap((p, pi) => model.op.flatMap((o, oi) => model.hx.items.map((h, hi) => ({ p: pi, o: oi, h: hi })))); model.casesConfirmed = false; break;
+      case 'confirm-cases': model.casesConfirmed = true; break;
+      case 'submit': model.submitted = true; break;
+      default: return;
+    }
+    render();
+  });
+
+  /* 행렬 ↔ 표 전환과 삭제 뒤 Case 정리 */
+  function syncRows() {
+    if (!matrixMode() && model.rows.length === 0) model.rows = model.matrix.map(k => { const [p, o] = k.split('|').map(Number); return { p, o, h: 0 }; });
+  }
+  function pruneCases() {
+    const pn = products().length, on = model.op.length, hn = model.hx.items.length;
+    model.matrix = model.matrix.filter(k => { const [p, o] = k.split('|').map(Number); return p < pn && o < on; });
+    model.rows = model.rows.filter(r => r.p < pn && r.o < on && r.h < hn);
+    model.casesConfirmed = false;
+  }
+
+  /* 미리보기 상태: 모델에 적용하고, 화면을 떠나거나 Default로 돌아오면 예시 데이터로 되돌린다. */
+  const PRESETS = {
+    '확정 전': m => { m.locked = false; m.target = { division: '', lineup: '', platform: '', chassis: '' }; },
+    '비교 제품 6개': m => { m.comparisons.push(...MORE_COMPARISONS.map(([drawing, diff]) => ({ drawing, diff }))); },
+    '선택 전': m => { m.press.state = ''; m.hx.state = ''; },
+    '선택지 여러 개': m => {
+      m.hx.items.push({ type: 'Fin&Tube', tube: '9.52', fin: 'Slit', rows: '3', fpi: '14' });
+      m.hx.items[0].fpi = '14';
+      m.rows = [{ p: 0, o: 0, h: 0 }, { p: 1, o: 0, h: 0 }, { p: 1, o: 0, h: 1 }, { p: 1, o: 1, h: 1 }];
+    },
+    '모두 충족': m => { m.hx.items[0].fpi = '14'; m.matrix = ['0|0', '0|1', '1|0', '1|1']; m.casesConfirmed = true; },
+  };
+  function applyPreset(name) {
+    model = defaultModel();
+    if (PRESETS[name]) PRESETS[name](model);
+    render();
+  }
+  function leavePreset() { if (window.prototypeShell && prototypeShell.getState() !== 'Default') prototypeShell.setState('Default'); }
+
+  const stateSelectEl = document.getElementById('sh-state');
+  stateSelectEl.addEventListener('change', () => applyPreset(stateSelectEl.value));
+  const originalReplace = history.replaceState.bind(history);
+  history.replaceState = (...args) => {
+    originalReplace(...args);
+    const slug = String(args[2] || '').replace('#', '');
+    if (!RENDER[slug]) return;
+    const leavingPreset = stateSelectEl.value && stateSelectEl.value !== 'Default';
+    shown = slug;
+    if (leavingPreset) model = defaultModel();
+    render(slug);
+    const stage = document.querySelector('.sh-stage');
+    if (document.body.classList.contains('sh-vp-390')) stage.scrollTop = 0; else scrollTo(0, 0);
+  };
+</script>
+
+<script>
+  const stage = document.querySelector('.sh-stage');
+  const screens = [...stage.querySelectorAll('[data-screen]')];
+  const screenSelect = document.getElementById('sh-screen');
+  const stateSelect = document.getElementById('sh-state');
+  const vpBtn = document.getElementById('sh-vp');
+  const themeCtl = document.getElementById('sh-theme');
+  const themeBtns = [...themeCtl.querySelectorAll('button')];
+  let current = null;
+  let currentStates = [];
+
+  screens.forEach(s => {
+    const option = document.createElement('option');
+    option.textContent = s.dataset.title || s.dataset.screen;
+    option.value = s.dataset.screen;
+    screenSelect.append(option);
+  });
+  screenSelect.onchange = () => show(screenSelect.value);
+
+  function show(slug) {
+    current = screens.find(s => s.dataset.screen === slug) || screens[0];
+    screens.forEach(s => s.hidden = s !== current);
+    screenSelect.value = current.dataset.screen;
+    history.replaceState(null, '', '#' + current.dataset.screen);
+    buildStates();
+  }
+
+  function buildStates() {
+    const declared = (current.dataset.states || '').split(',').map(x => x.trim()).filter(Boolean);
+    currentStates = ['Default', ...declared.filter(name => name !== 'Default')];
+    stateSelect.innerHTML = '';
+    currentStates.forEach(name => {
+      const option = document.createElement('option');
+      option.textContent = name;
+      option.value = name;
+      stateSelect.append(option);
+    });
+    applyState('Default');
+  }
+
+  function applyState(name) {
+    const active = currentStates.includes(name) ? name : 'Default';
+    current.querySelectorAll('[data-when]').forEach(el => {
+      el.hidden = !el.dataset.when.split(',').map(x => x.trim()).includes(active);
+    });
+    stateSelect.value = active;
+  }
+  stateSelect.onchange = () => applyState(stateSelect.value);
+
+  window.prototypeShell = {
+    showScreen: show,
+    setState: applyState,
+    getScreen: () => current?.dataset.screen,
+    getState: () => stateSelect.value
+  };
+
+  const VPS = ['full', '390', '768'];
+  let vp = VPS.find(v => document.body.classList.contains('sh-vp-' + v)) || 'full';
+  function applyVp() {
+    VPS.forEach(v => document.body.classList.toggle('sh-vp-' + v, v === vp && v !== 'full'));
+    vpBtn.textContent = 'vp: ' + vp + ' (m)';
+    vpBtn.classList.toggle('on', vp !== 'full');
+  }
+  vpBtn.onclick = () => { vp = VPS[(VPS.indexOf(vp) + 1) % VPS.length]; applyVp(); };
+  applyVp();
+
+  const hasDark = [...document.styleSheets].some(sheet => {
+    try {
+      return [...sheet.cssRules].some(rule => (rule.selectorText || '')
+        .split(',').some(part => /\.sh-theme-dark$/.test(part.trim())));
+    } catch { return false }
+  });
+  let dark = false;
+  function applyTheme() {
+    document.documentElement.classList.toggle('sh-theme-dark', dark);
+    document.body.classList.toggle('sh-theme-dark', dark);
+    themeBtns.forEach(b => b.classList.toggle('on', (b.dataset.theme === 'dark') === dark));
+  }
+  themeCtl.hidden = !hasDark;
+  themeBtns.forEach(b => b.onclick = () => { dark = b.dataset.theme === 'dark'; applyTheme(); });
+  applyTheme();
+
+  addEventListener('keydown', e => {
+    if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+    const i = screens.indexOf(current);
+    if (e.key === 'ArrowRight') show(screens[(i + 1) % screens.length].dataset.screen);
+    if (e.key === 'ArrowLeft') show(screens[(i - 1 + screens.length) % screens.length].dataset.screen);
+    if (e.key === 'm') vpBtn.click();
+    if (e.key === 't' && !themeCtl.hidden) { dark = !dark; applyTheme(); }
+  });
+
+  addEventListener('hashchange', () => show(location.hash.slice(1)));
+  show(location.hash.slice(1));
+</script>
