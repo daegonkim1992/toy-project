@@ -1,10 +1,29 @@
-import type { AirflowRequest } from "./model";
+import { emptyConditions } from "./conditions";
+import type { AirflowRequest, CaseRow, RequestContent } from "./model";
 
 export const STORAGE_KEY = "airflow-requests-v1";
 
+type StoredContent = Omit<RequestContent, "conditions" | "cases"> & {
+  conditions?: RequestContent["conditions"];
+  cases: Partial<CaseRow>[];
+};
+
+// 선택 조건이 생기기 전에 저장된 의뢰서에 빈 선택 조건과 Case 열을 채운다.
+function normalizeContent<T extends StoredContent>(content: T): T & Pick<RequestContent, "conditions" | "cases"> {
+  return {
+    ...content,
+    conditions: content.conditions ?? emptyConditions(),
+    cases: content.cases.map((row) => ({ pressureId: "", heatExchangerId: "", filterId: "", ...row }) as CaseRow),
+  };
+}
+
 export function parseRequests(raw: string | null): AirflowRequest[] {
   try {
-    return raw ? (JSON.parse(raw) as AirflowRequest[]) : [];
+    const stored = raw ? (JSON.parse(raw) as (AirflowRequest & StoredContent)[]) : [];
+    return stored.map((request) => ({
+      ...normalizeContent(request),
+      revisions: request.revisions.map((revision) => ({ ...revision, snapshot: normalizeContent(revision.snapshot as StoredContent) })),
+    })) as AirflowRequest[];
   } catch {
     return [];
   }

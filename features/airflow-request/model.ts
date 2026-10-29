@@ -61,7 +61,39 @@ export type OperatingPackage = {
   airflowPurpose: "" | "reflect" | "reference";
 };
 
-export type CaseRow = { id: string; productId: string; operatingId: string };
+export type ConditionState = "" | "none" | "use";
+
+export type PressurePackage = { id: string; name: string; inlet: string; outlet: string };
+
+export type HeatExchangerPackage = {
+  id: string;
+  name: string;
+  type: "" | "Fin&Tube" | "Micro-Channel";
+  tubeDiameter: string;
+  finType: string;
+  rowCount: string;
+  fpi: string;
+};
+
+export type MeasurementPoint = { id: string; velocity: string; pressureLoss: string };
+export type PhysicalFilter = { id: string; name: string; points: MeasurementPoint[] };
+export type FilterPackage = { id: string; name: string; physicalFilters: PhysicalFilter[] };
+
+/** 풍량 해석에서 선택(○)인 조건. 없음·미사용이어도 입력한 패키지는 지우지 않고 보존한다. */
+export type OptionalConditions = {
+  spacePressure: { state: ConditionState; packages: PressurePackage[] };
+  heatExchanger: { state: ConditionState; packages: HeatExchangerPackage[] };
+  filter: { enabled: boolean; packages: FilterPackage[] };
+};
+
+export type CaseRow = {
+  id: string;
+  productId: string;
+  operatingId: string;
+  pressureId: string;
+  heatExchangerId: string;
+  filterId: string;
+};
 
 export type RequestContent = {
   target: RequestTarget;
@@ -69,6 +101,7 @@ export type RequestContent = {
   base: Product;
   comparisons: Product[];
   operating: OperatingPackage[];
+  conditions: OptionalConditions;
   cases: CaseRow[];
 };
 

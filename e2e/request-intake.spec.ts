@@ -33,9 +33,11 @@ async function fillCompleteRequest(page: Page) {
   await page.getByLabel("형상 2 도면번호").fill("NEW-002");
   await page.getByLabel("형상 2 Base 대비 차이").fill("팬 직경 변경");
 
-  await page.getByRole("button", { name: "4. 운전 조건" }).click();
+  await page.getByRole("button", { name: "4. 해석조건" }).click();
   await page.getByRole("button", { name: "운전 조건 추가" }).click();
   await page.getByLabel("운전 1 팬 회전수 (rpm)").fill("900");
+  await page.getByRole("radio", { name: "공간 압력 없음" }).click();
+  await page.getByRole("radio", { name: "열교환기 없음" }).click();
 
   await page.getByRole("button", { name: "5. Case" }).click();
   await choose(page, "Case 1 운전 조건", "운전 1");
@@ -99,4 +101,53 @@ test("다른 사용자의 작성 중 의뢰는 같은 부서여도 보이지 않
   await expect(page.getByRole("link", { name: /미확정|CFD-/ })).toHaveCount(0);
   await page.goto(url);
   await expect(page.getByText("이 의뢰를 볼 수 없습니다.")).toBeVisible();
+});
+
+test("선택 조건을 입력해 Case 열로 비교한 뒤 제출한다", async ({ page }) => {
+  await startLockedRequest(page);
+  await fillCompleteRequest(page);
+
+  await page.getByRole("button", { name: "4. 해석조건" }).click();
+  await page.getByRole("radio", { name: "공간 압력 있음" }).click();
+  await page.getByLabel("공간 압력 1 입구 압력 (Pa)").fill("10");
+  await page.getByLabel("공간 압력 1 출구 압력 (Pa)").fill("0");
+
+  await page.getByRole("radio", { name: "열교환기 사양 입력" }).click();
+  await choose(page, "열교환기 1 유형", "Fin&Tube");
+  await choose(page, "열교환기 1 관 직경(Pi) 또는 채널 폭", "7");
+  await choose(page, "열교환기 1 Fin type", "Slit");
+  await choose(page, "열교환기 1 열 수", "2");
+  await choose(page, "열교환기 1 FPI", "14");
+
+  await page.getByRole("checkbox", { name: "제품에 필터가 있음" }).click();
+  await page.getByLabel("필터 A 측정점 1 유속 (m/s)").fill("1.5");
+  await page.getByLabel("필터 A 측정점 1 압력손실 (Pa)").fill("20");
+  await page.getByRole("button", { name: "필터 A 측정점 추가" }).click();
+  await page.getByLabel("필터 A 측정점 2 유속 (m/s)").fill("2");
+  await page.getByLabel("필터 A 측정점 2 압력손실 (Pa)").fill("30");
+
+  await page.getByRole("button", { name: "5. Case" }).click();
+  await page.getByRole("button", { name: "Case 구성 확인" }).click();
+  await expect(page.getByText("Case 1의 공간 압력을 선택해야 합니다.")).toBeVisible();
+
+  for (const n of [1, 2]) {
+    await choose(page, `Case ${n} 공간 압력`, "공간 압력 1");
+    await choose(page, `Case ${n} 열교환기`, "열교환기 1");
+    await choose(page, `Case ${n} 필터`, "필터 1");
+  }
+  await page.getByRole("button", { name: "Case 구성 확인" }).click();
+  await expect(page.getByText("Case 구성이 확인되었습니다.")).toBeVisible();
+
+  await page.getByRole("button", { name: "6. 최종 검토" }).click();
+  await expect(page.getByText("모든 제출 조건을 충족했습니다.")).toBeVisible();
+  await expect(page.getByText(/Case 1: 형상 1 \+ 운전 1 \+ 공간 압력 1 \+ 열교환기 1 \+ 필터 1/)).toBeVisible();
+  await page.getByRole("button", { name: "제출", exact: true }).click();
+  await expect(page.getByText(/현재 revision 1/)).toBeVisible();
+});
+
+test("공간 압력과 열교환기를 고르지 않으면 제출이 막힌다", async ({ page }) => {
+  await startLockedRequest(page);
+  await page.getByRole("button", { name: "6. 최종 검토" }).click();
+  await expect(page.getByText("공간 압력: 값을 입력하거나 '없음'을 선택해야 합니다.")).toBeVisible();
+  await expect(page.getByText("열교환기: 사양을 입력하거나 '열교환기 없음'을 선택해야 합니다.")).toBeVisible();
 });

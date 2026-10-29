@@ -7,6 +7,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
+import { caseSources, defaultCaseRow } from "../cases";
 import type { AirflowRequest, CaseRow, SubmissionIssue } from "../model";
 
 export function CasesStep({
@@ -20,7 +21,8 @@ export function CasesStep({
   onChange: (cases: CaseRow[]) => void;
   onConfirm: () => void;
 }) {
-  const products = [request.base, ...request.comparisons];
+  const sources = caseSources(request);
+  const products = sources.products;
   const setRow = (id: string, patch: Partial<CaseRow>) => onChange(request.cases.map((r) => (r.id === id ? { ...r, ...patch } : r)));
 
   return (
@@ -34,6 +36,9 @@ export function CasesStep({
             <TableHead className="w-16">Case</TableHead>
             <TableHead>형상</TableHead>
             <TableHead>운전 조건</TableHead>
+            {sources.pressures ? <TableHead>공간 압력</TableHead> : null}
+            {sources.heatExchangers ? <TableHead>열교환기</TableHead> : null}
+            {sources.filters ? <TableHead>필터</TableHead> : null}
             <TableHead className="w-24" />
           </TableRow>
         </TableHeader>
@@ -58,6 +63,36 @@ export function CasesStep({
                   placeholder={request.operating.length === 0 ? "운전 조건을 먼저 입력하세요" : "선택"}
                 />
               </TableCell>
+              {sources.pressures ? (
+                <TableCell>
+                  <SimpleSelect
+                    ariaLabel={`Case ${index + 1} 공간 압력`}
+                    value={row.pressureId}
+                    onChange={(v) => setRow(row.id, { pressureId: v })}
+                    options={sources.pressures.map((p) => ({ value: p.id, label: p.name }))}
+                  />
+                </TableCell>
+              ) : null}
+              {sources.heatExchangers ? (
+                <TableCell>
+                  <SimpleSelect
+                    ariaLabel={`Case ${index + 1} 열교환기`}
+                    value={row.heatExchangerId}
+                    onChange={(v) => setRow(row.id, { heatExchangerId: v })}
+                    options={sources.heatExchangers.map((h) => ({ value: h.id, label: h.name }))}
+                  />
+                </TableCell>
+              ) : null}
+              {sources.filters ? (
+                <TableCell>
+                  <SimpleSelect
+                    ariaLabel={`Case ${index + 1} 필터`}
+                    value={row.filterId}
+                    onChange={(v) => setRow(row.id, { filterId: v })}
+                    options={sources.filters.map((f) => ({ value: f.id, label: f.name }))}
+                  />
+                </TableCell>
+              ) : null}
               <TableCell>
                 <Button
                   variant="ghost"
@@ -76,7 +111,7 @@ export function CasesStep({
       <div className="flex flex-wrap gap-3">
         <Button
           variant="outline"
-          onClick={() => onChange([...request.cases, { id: crypto.randomUUID(), productId: "", operatingId: "" }])}
+          onClick={() => onChange([...request.cases, { ...defaultCaseRow(""), id: crypto.randomUUID() }])}
         >
           <PlusIcon /> Case 추가
         </Button>

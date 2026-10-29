@@ -10,6 +10,7 @@ import { validateSubmission, type RequestPatch } from "../request";
 import { CasesStep } from "./cases-step";
 import { InfoStep } from "./info-step";
 import { OperatingStep } from "./operating-step";
+import { OptionalConditionsStep } from "./optional-conditions";
 import { ProductsStep } from "./products-step";
 import { RequestSummary } from "./request-summary";
 import { TargetStep } from "./target-step";
@@ -18,7 +19,7 @@ const STEPS: { key: StepKey; label: string }[] = [
   { key: "target", label: "의뢰 대상" },
   { key: "info", label: "의뢰 내용" },
   { key: "products", label: "해석 제품" },
-  { key: "operating", label: "운전 조건" },
+  { key: "operating", label: "해석조건" },
   { key: "cases", label: "Case" },
   { key: "review", label: "최종 검토" },
 ];
@@ -84,7 +85,15 @@ export function RequestEditor({
         {step === "products" ? (
           <ProductsStep request={request} onChange={(base, comparisons) => onEdit({ base, comparisons })} />
         ) : null}
-        {step === "operating" ? <OperatingStep request={request} onChange={(operating) => onEdit({ operating })} /> : null}
+        {step === "operating" ? (
+          <div className="flex flex-col gap-10">
+            <section aria-label="운전 조건" className="flex flex-col gap-4">
+              <h2 className="font-heading text-lg font-medium">운전 조건</h2>
+              <OperatingStep request={request} onChange={(operating) => onEdit({ operating })} />
+            </section>
+            <OptionalConditionsStep conditions={request.conditions} onChange={(conditions) => onEdit({ conditions })} />
+          </div>
+        ) : null}
         {step === "cases" ? (
           <CasesStep
             request={request}

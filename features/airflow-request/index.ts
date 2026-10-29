@@ -1,7 +1,8 @@
 export * from "./model";
 export * from "./reference-data";
 export { newOperatingPackage } from "./operating";
-export { defaultCaseRow } from "./cases";
+export { caseSources, defaultCaseRow, validateCases, type CaseSources } from "./cases";
+export { emptyConditions } from "./conditions";
 export {
   allowedActions,
   confirmCases,
@@ -19,4 +20,4 @@ export {
   type RequestPatch,
   type SubmitResult,
 } from "./request";
-export { loadRequests, saveRequests } from "./repository";
+export { loadRequests, parseRequests, saveRequests } from "./repository";

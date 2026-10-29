@@ -1,6 +1,7 @@
 import type { SessionUser } from "@/features/people";
 
-import { defaultCaseRow, reconcileCases, validateCases } from "./cases";
+import { caseSources, defaultCaseRow, reconcileCases, validateCases } from "./cases";
+import { emptyConditions, validateConditions } from "./conditions";
 import {
   FREE_TEXT_LIMIT,
   type AirflowRequest,
@@ -48,6 +49,7 @@ export function createDraft(user: SessionUser, now: Date, id: string): AirflowRe
     base: { id: "base", drawingNo: "", displayName: "형상 1", difference: "" },
     comparisons: [],
     operating: [],
+    conditions: emptyConditions(),
     cases: [defaultCaseRow("base")],
     revisions: [],
     history: [
@@ -56,7 +58,7 @@ export function createDraft(user: SessionUser, now: Date, id: string): AirflowRe
   };
 }
 
-export type RequestPatch = Partial<Pick<AirflowRequest, "target" | "info" | "base" | "comparisons" | "operating" | "cases">>;
+export type RequestPatch = Partial<Pick<AirflowRequest, "target" | "info" | "base" | "comparisons" | "operating" | "conditions" | "cases">>;
 
 /** 수정 가능한 상태에서만 반영한다. 제품, 조건, Case를 바꾸면 Case를 다시 확인받아야 한다. */
 export function editRequest(request: AirflowRequest, patch: RequestPatch): AirflowRequest {
@@ -67,11 +69,12 @@ export function editRequest(request: AirflowRequest, patch: RequestPatch): Airfl
   if (patch.base) next.base = patch.base;
   if (patch.comparisons) next.comparisons = patch.comparisons;
   if (patch.operating) next.operating = patch.operating;
+  if (patch.conditions) next.conditions = patch.conditions;
   if (patch.cases) next.cases = patch.cases;
 
-  const casesAffected = patch.base || patch.comparisons || patch.operating || patch.cases;
+  const casesAffected = patch.base || patch.comparisons || patch.operating || patch.conditions || patch.cases;
   if (casesAffected) {
-    next.cases = reconcileCases(next.cases, [next.base, ...next.comparisons], next.operating);
+    next.cases = reconcileCases(next.cases, caseSources(next));
     next.casesConfirmed = false;
   }
   return next;
@@ -184,7 +187,9 @@ export function validateSubmission(request: AirflowRequest): SubmissionIssue[] {
     else signatures.set(signature, pkg.name);
   }
 
-  const caseIssues = validateCases(request.cases, [request.base, ...request.comparisons], request.operating);
+  for (const message of validateConditions(request.conditions)) add("operating", message);
+
+  const caseIssues = validateCases(request.cases, caseSources(request));
   issues.push(...caseIssues);
   if (caseIssues.length === 0 && !request.casesConfirmed) add("cases", "Case 구성을 확인해야 합니다.");
 
@@ -224,7 +229,7 @@ function step(label: string): SubmissionIssue["step"] {
 export type CasesResult = { ok: true; request: AirflowRequest } | { ok: false; issues: SubmissionIssue[] };
 
 export function confirmCases(request: AirflowRequest): CasesResult {
-  const issues = validateCases(request.cases, [request.base, ...request.comparisons], request.operating);
+  const issues = validateCases(request.cases, caseSources(request));
   if (issues.length > 0) return { ok: false, issues };
   return { ok: true, request: { ...request, casesConfirmed: true } };
 }
@@ -244,6 +249,7 @@ export function submitRequest(request: AirflowRequest, user: SessionUser, now: D
     base: request.base,
     comparisons: request.comparisons,
     operating: request.operating,
+    conditions: request.conditions,
     cases: request.cases,
   });
   const at = now.toISOString();

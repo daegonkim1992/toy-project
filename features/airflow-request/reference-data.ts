@@ -97,3 +97,51 @@ export const OPERATION_MODE_OPTIONS = [
   { value: "outdoor", label: "실외" },
   { value: "simultaneous", label: "동시운전" },
 ] as const;
+
+export type HeatExchangerSpec = {
+  type: "Fin&Tube" | "Micro-Channel";
+  tubeDiameter: string;
+  finType: string;
+  rowCount: string;
+  fpi: string;
+};
+
+const spec = (
+  type: HeatExchangerSpec["type"],
+  tubeDiameter: string,
+  finType: string,
+  rowCount: string,
+  fpi: string,
+): HeatExchangerSpec => ({ type, tubeDiameter, finType, rowCount, fpi });
+
+// 임시 샘플 열교환기 Catalog. 관 직경이 W로 시작하면 Micro-Channel이고 Fin type은 Flat이다.
+export const heatExchangerCatalog: HeatExchangerSpec[] = [
+  spec("Fin&Tube", "7", "Slit", "2", "14"),
+  spec("Fin&Tube", "7", "Slit", "2", "16"),
+  spec("Fin&Tube", "7", "Louver", "3", "14"),
+  spec("Fin&Tube", "9.52", "Slit", "2", "12"),
+  spec("Fin&Tube", "9.52", "Slit", "3", "14"),
+  spec("Fin&Tube", "9.52", "Louver", "4", "16"),
+  spec("Micro-Channel", "W16", "Flat", "1", "18"),
+  spec("Micro-Channel", "W16", "Flat", "1", "20"),
+  spec("Micro-Channel", "W22", "Flat", "1", "18"),
+];
+
+export function findCatalogSpec(candidate: HeatExchangerSpec): HeatExchangerSpec | undefined {
+  return heatExchangerCatalog.find(
+    (s) =>
+      s.type === candidate.type &&
+      s.tubeDiameter === candidate.tubeDiameter &&
+      s.finType === candidate.finType &&
+      s.rowCount === candidate.rowCount &&
+      s.fpi === candidate.fpi,
+  );
+}
+
+/** 앞에서 고른 값과 맞는 Catalog 항목에서 한 필드의 선택지를 뽑는다. */
+export function catalogOptions(field: keyof HeatExchangerSpec, chosen: Partial<HeatExchangerSpec>): string[] {
+  const matches = heatExchangerCatalog.filter((s) =>
+    (Object.keys(chosen) as (keyof HeatExchangerSpec)[]).every((key) => !chosen[key] || s[key] === chosen[key]),
+  );
+  return [...new Set(matches.map((s) => s[field]))];
+}

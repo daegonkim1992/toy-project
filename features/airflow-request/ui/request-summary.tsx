@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { findUser } from "@/features/people";
 
+import { caseSources } from "../cases";
 import { STATUS_LABEL, type AirflowRequest } from "../model";
 import { DECISION_USES, OPERATION_MODE_OPTIONS, SCOPE_OPTIONS, findPmsProject } from "../reference-data";
 
@@ -24,6 +25,9 @@ export function RequestSummary({ request }: { request: AirflowRequest }) {
   const products = [request.base, ...request.comparisons];
   const productName = (id: string) => products.find((p) => p.id === id)?.displayName ?? "-";
   const operatingName = (id: string) => request.operating.find((o) => o.id === id)?.name ?? "-";
+  const { spacePressure, heatExchanger, filter } = request.conditions;
+  const sources = caseSources(request);
+  const nameIn = (list: { id: string; name: string }[] | null, id: string) => list?.find((x) => x.id === id)?.name;
 
   return (
     <div className="flex flex-col gap-6">
@@ -93,13 +97,51 @@ export function RequestSummary({ request }: { request: AirflowRequest }) {
 
       <Card>
         <CardHeader>
+          <CardTitle>선택 조건</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <dl className="grid grid-cols-[10rem_1fr] gap-x-4 gap-y-2 text-sm">
+            <Row label="공간 압력">
+              {spacePressure.state === "use"
+                ? spacePressure.packages.map((p) => `${p.name}: 입구 ${p.inlet} Pa, 출구 ${p.outlet} Pa`).join(" / ")
+                : "없음"}
+            </Row>
+            <Row label="열교환기">
+              {heatExchanger.state === "use"
+                ? heatExchanger.packages
+                    .map((h) => `${h.name}: ${h.type}, ${h.tubeDiameter}, ${h.finType}, ${h.rowCount}열, FPI ${h.fpi}`)
+                    .join(" / ")
+                : "없음"}
+            </Row>
+            <Row label="필터">
+              {filter.enabled
+                ? filter.packages
+                    .map((p) => `${p.name}: ${p.physicalFilters.map((f) => `${f.name}(측정점 ${f.points.length}개)`).join(", ")}`)
+                    .join(" / ")
+                : "없음"}
+            </Row>
+          </dl>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Case</CardTitle>
         </CardHeader>
         <CardContent>
           <ol className="flex flex-col gap-1 text-sm">
             {request.cases.map((row, i) => (
               <li key={row.id}>
-                Case {i + 1}: {productName(row.productId)} + {operatingName(row.operatingId)}
+                Case {i + 1}:{" "}
+                {[
+                  productName(row.productId),
+                  operatingName(row.operatingId),
+                  nameIn(sources.pressures, row.pressureId),
+                  nameIn(sources.heatExchangers, row.heatExchangerId),
+                  nameIn(sources.filters, row.filterId),
+                ]
+                  .filter(Boolean)
+                  .join(" + ")}
               </li>
             ))}
           </ol>

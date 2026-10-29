@@ -1,6 +1,18 @@
 import { describe, expect, it } from "vitest";
 
-import { sampleUsers } from "@/features/people";
+import {
+  completeDraft,
+  kase,
+  kim,
+  lee,
+  lockedDraft,
+  manager,
+  messages,
+  now,
+  park,
+  rpmPackage,
+  submittable,
+} from "./fixtures";
 
 import {
   allowedActions,
@@ -11,67 +23,8 @@ import {
   submitRequest,
   validateSubmission,
   visibleRequests,
-  type AirflowRequest,
   type OperatingPackage,
 } from "./index";
-
-const kim = sampleUsers.find((u) => u.id === "u-kim")!;
-const lee = sampleUsers.find((u) => u.id === "u-lee")!;
-const park = sampleUsers.find((u) => u.id === "u-park")!;
-const manager = sampleUsers.find((u) => u.role === "manager")!;
-const now = new Date(2026, 9, 29, 10, 0, 0);
-
-const sacTarget = { division: "SAC", lineup: "Multi V", platform: "Cassette", chassis: "4Way" };
-
-function lockedDraft(user = kim, id = "r1", existing: AirflowRequest[] = []) {
-  const draft = createDraft(user, now, id);
-  const result = lockTarget(editRequest(draft, { target: { ...draft.target, ...sacTarget } }), existing, now);
-  if (!result.ok) throw new Error(result.message);
-  return result.request;
-}
-
-const rpmPackage = (overrides: Partial<OperatingPackage> = {}): OperatingPackage => ({
-  id: "op1",
-  name: "운전 1",
-  fanCount: "1",
-  rpmMode: "common",
-  commonRpm: "900",
-  fans: [],
-  airflow: "",
-  airflowPurpose: "",
-  ...overrides,
-});
-
-function completeDraft(user = kim, id = "r1", existing: AirflowRequest[] = []): AirflowRequest {
-  const request = lockedDraft(user, id, existing);
-  const edited = editRequest(request, {
-    info: {
-      ...request.info,
-      requestType: "품질 개선",
-      modelSuffix: "ABC.AKOR",
-      desiredDate: "2026-11-30",
-      background: "팬이 변경됨",
-      wantedResult: "풍량 변화 확인",
-    },
-    base: { ...request.base, drawingNo: "BASE-001" },
-    comparisons: [{ id: "c1", drawingNo: "NEW-002", displayName: "형상 2", difference: "팬 직경 변경" }],
-    operating: [rpmPackage()],
-  });
-  return editRequest(edited, {
-    cases: [
-      { id: "k1", productId: edited.base.id, operatingId: "op1" },
-      { id: "k2", productId: "c1", operatingId: "op1" },
-    ],
-  });
-}
-
-function submittable(user = kim, id = "r1") {
-  const confirmed = confirmCases(completeDraft(user, id));
-  if (!confirmed.ok) throw new Error(confirmed.issues[0].message);
-  return confirmed.request;
-}
-
-const messages = (request: AirflowRequest) => validateSubmission(request).map((i) => i.message);
 
 describe("의뢰번호", () => {
   it("의뢰 대상을 확정하면 CFD-YYYYMMDD-NNN 형식으로 발급된다", () => {
@@ -247,13 +200,13 @@ describe("Case 구성", () => {
 
   it("활성 열을 모두 선택해야 한다", () => {
     const request = completeDraft();
-    const unselected = editRequest(request, { cases: [...request.cases.slice(0, 1), { id: "k2", productId: "c1", operatingId: "" }] });
+    const unselected = editRequest(request, { cases: [...request.cases.slice(0, 1), kase("k2", "c1", "")] });
     expect(confirmCases(unselected).ok).toBe(false);
   });
 
   it("같은 형상과 운전 조합의 Case는 중복될 수 없다", () => {
     const request = completeDraft();
-    const dup = editRequest(request, { cases: [...request.cases, { id: "k3", productId: "c1", operatingId: "op1" }] });
+    const dup = editRequest(request, { cases: [...request.cases, kase("k3", "c1", "op1")] });
     const result = confirmCases(dup);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.issues.map((i) => i.message)).toContain("형상 2 + 운전 1 조합이 중복됩니다.");
@@ -280,7 +233,7 @@ describe("Case 구성", () => {
 
   it("아직 선택하지 않은 빈 Case 행도 추가할 수 있다", () => {
     const request = completeDraft();
-    const added = editRequest(request, { cases: [...request.cases, { id: "k9", productId: "", operatingId: "" }] });
+    const added = editRequest(request, { cases: [...request.cases, kase("k9", "", "")] });
     expect(added.cases).toHaveLength(3);
   });
 
